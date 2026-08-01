@@ -38,6 +38,9 @@ jobs:
       STORAGE_ROOT: .storage
       ADMIN_PASSCODE: ci-placeholder-passcode
       ADMIN_SESSION_SECRET: ci-placeholder-session-secret
+      # playwright is a devDependency but nothing in CI drives a browser yet —
+      # skip the ~300MB Chromium download until something actually needs it.
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
 
     steps:
       - name: Checkout
