@@ -71,12 +71,17 @@ export function UploadForm() {
     return (
       <div className="flex flex-col items-center gap-3 text-center">
         <p className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-          Got it — project created.
+          Got it — one last step.
         </p>
         <p className="max-w-sm text-sm text-zinc-600 dark:text-zinc-400">
-          Project ID <span className="font-mono">{result.projectId}</span>. Payment is coming in
-          the next step of this build.
+          Project ID <span className="font-mono">{result.projectId}</span>
         </p>
+        <a
+          href={`/pay/${result.projectId}`}
+          className="rounded-xl bg-zinc-900 px-5 py-3 font-semibold text-white transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+        >
+          Continue to Payment
+        </a>
       </div>
     );
   }

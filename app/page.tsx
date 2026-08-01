@@ -1,13 +1,21 @@
+import Link from "next/link";
 import { PhoneMockup } from "@/app/_components/PhoneMockup";
 import { ServiceButton } from "@/app/_components/ServiceButton";
 
 export default function Home() {
   return (
     <div className="flex flex-1 flex-col bg-white dark:bg-black">
-      <header className="px-6 py-5 sm:px-10">
+      <header className="flex items-center justify-between px-6 py-5 sm:px-10">
         <span className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
           reels-engine
         </span>
+        <Link
+          href="/ops/login"
+          aria-label="Admin"
+          className="text-zinc-300 transition-colors hover:text-zinc-400 dark:text-zinc-800 dark:hover:text-zinc-700"
+        >
+          →
+        </Link>
       </header>
 
       <main className="flex flex-1 items-center justify-center px-6 pb-16 sm:px-10">

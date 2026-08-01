@@ -16,9 +16,11 @@ enum ProjectStatus {
 }
 
 enum PaymentStatus {
-  PENDING
+  PENDING // gateway order created, awaiting customer action (Razorpay path)
+  PENDING_VERIFICATION // customer submitted a UTR, awaiting manual admin review (UPI path)
   PAID
   FAILED
+  REJECTED // admin reviewed and rejected the claimed UPI payment
   REFUNDED
 }
 
@@ -77,10 +79,16 @@ model Payment {
 
   amount     Int // in paise (₹500 => 50000)
   currency   String        @default("INR")
-  provider   String        @default("razorpay")
+  provider   String        @default("razorpay") // "manual_upi" | "razorpay"
   providerOrderId   String?
   providerPaymentId String?
   status     PaymentStatus @default(PENDING)
+
+  // Manual UPI verification fields (provider = "manual_upi")
+  upiId            String?
+  utr              String?
+  verifiedAt       DateTime?
+  rejectionReason  String?
 
   createdAt  DateTime      @default(now())
 
