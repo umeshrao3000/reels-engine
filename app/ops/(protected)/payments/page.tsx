@@ -1,13 +1,8 @@
-import { redirect } from "next/navigation";
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { isRequestFromAdmin } from "@/lib/modules/admin/session";
-import { PaymentActions } from "@/app/ops/payments/_components/PaymentActions";
+import { PaymentActions } from "@/app/ops/(protected)/payments/_components/PaymentActions";
 
 export default async function AdminPaymentsPage() {
-  if (!(await isRequestFromAdmin())) {
-    redirect("/ops/login");
-  }
-
   const pending = await prisma.payment.findMany({
     where: { status: "PENDING_VERIFICATION" },
     orderBy: { createdAt: "asc" },
@@ -15,7 +10,7 @@ export default async function AdminPaymentsPage() {
   });
 
   return (
-    <div className="flex flex-1 flex-col gap-4 bg-white px-6 py-10 dark:bg-black">
+    <div className="flex flex-1 flex-col gap-4 px-6 py-10">
       <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
         Payments awaiting verification ({pending.length})
       </h1>
@@ -28,7 +23,9 @@ export default async function AdminPaymentsPage() {
             <li key={payment.id} className="flex items-center justify-between gap-4 py-4">
               <div className="text-sm">
                 <p className="font-medium text-zinc-900 dark:text-zinc-50">
-                  Project {payment.projectId}
+                  <Link href={`/ops/projects/${payment.projectId}`} className="hover:underline">
+                    Project {payment.projectId}
+                  </Link>
                 </p>
                 <p className="text-zinc-500 dark:text-zinc-400">
                   {payment.project.uploads[0]?.originalFileName ??
