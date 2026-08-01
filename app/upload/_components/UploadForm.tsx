@@ -22,7 +22,7 @@ export function UploadForm() {
   const [dragActive, setDragActive] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ projectId: string } | null>(null);
+  const [result, setResult] = useState<{ projectId: string; shareToken: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const detectedSource = link.trim() ? classifyUrlSource(link.trim()) : null;
@@ -59,7 +59,7 @@ export function UploadForm() {
         setError(data.error ?? "Something went wrong. Please try again.");
         return;
       }
-      setResult({ projectId: data.projectId });
+      setResult({ projectId: data.projectId, shareToken: data.shareToken });
     } catch {
       setError("Couldn't reach the server. Check your connection and try again.");
     } finally {
@@ -81,6 +81,12 @@ export function UploadForm() {
           className="rounded-xl bg-zinc-900 px-5 py-3 font-semibold text-white transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           Continue to Payment
+        </a>
+        <a
+          href={`/status/${result.shareToken}`}
+          className="text-xs font-medium text-zinc-500 underline hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+        >
+          Bookmark your status page
         </a>
       </div>
     );

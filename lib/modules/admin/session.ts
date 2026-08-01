@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { cookies } from "next/headers";
 
 export const ADMIN_SESSION_COOKIE = "admin_session";
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
@@ -42,6 +43,16 @@ export function isAdminSessionValid(token: string | undefined | null): boolean {
   if (expectedBuf.length !== actualBuf.length) return false;
 
   return timingSafeEqual(expectedBuf, actualBuf);
+}
+
+/**
+ * Reads the admin session cookie from the current request and checks it.
+ * Shared by every route/page that needs to gate on "is this the admin" —
+ * avoids re-reading and re-checking the cookie at each call site.
+ */
+export async function isRequestFromAdmin(): Promise<boolean> {
+  const cookieStore = await cookies();
+  return isAdminSessionValid(cookieStore.get(ADMIN_SESSION_COOKIE)?.value);
 }
 
 export function isPasscodeCorrect(candidate: string): boolean {
