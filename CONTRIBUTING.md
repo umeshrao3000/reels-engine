@@ -43,34 +43,41 @@ npm audit --audit-level=critical
 
 ## Branching & PRs
 
+This is currently a single-owner project, so governance is intentionally
+light — just enough to stop accidental mistakes, not enough to slow you down.
+
 - `main` is protected: no direct pushes, PRs only.
-- Branch off `main` for every change; keep PRs scoped to one milestone or
-  concern.
-- Fill out the PR template — Summary, Modified Files, Testing Completed,
-  Screenshots (UI changes), Risks, Rollback Plan.
-- CI (`.github/workflows/ci.yml`) must pass: install, Prisma generate, type
-  check, lint, migration verification, build, unit tests (when present),
-  security audit.
-- Resolve all review conversations before merge.
-- Your branch must be up to date with `main` before merging (rebase or merge
-  `main` in, don't just click through a stale merge).
+- Branch off `main` for every change.
+- Fill out the PR template (it's short — summary, testing, risk).
+- CI must pass: install, Prisma generate, type check, lint, migration
+  verification, build, unit tests (when present), security audit.
 - No force-pushes to `main`, ever.
+- No required reviewers, no approval chains, no merge queue — merge once CI
+  is green.
 
 ### Required GitHub branch protection (configured in repo Settings, not by CI)
 
 This can't be set from inside the app or CI — it's a one-time setting an
 admin applies in **Settings → Branches → Branch protection rules** for
-`main`:
+`main`. Keep it to exactly this, nothing more:
 
 - Require a pull request before merging
 - Require status checks to pass before merging → select the `CI` workflow's
   job
-- Require branches to be up to date before merging
-- Require conversation resolution before merging
 - Do not allow force pushes
-- Do not allow deletions
-- (Optional but recommended) Require at least 1 approval once there's more
-  than one contributor
+
+Deliberately not enabled: required approvals, required conversation
+resolution, "require branches up to date," merge queues. Add them later if
+the team grows past one owner — not before.
+
+CodeQL runs on every PR as an informational scan (Security tab), not as a
+required/blocking check — it shouldn't hold up a merge.
+
+## Dependency updates
+
+Dependabot checks npm and GitHub Actions dependencies weekly and opens PRs
+for updates (`.github/dependabot.yml`). Same CI gate applies to those PRs as
+any other.
 
 ## Security audit policy
 
