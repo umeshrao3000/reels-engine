@@ -18,7 +18,7 @@ export function getStorageService(): StorageService {
 
   switch (driver) {
     case "local": {
-      const root = path.resolve(process.cwd(), process.env.STORAGE_ROOT ?? ".storage");
+      const root = path.resolve(/* turbopackIgnore: true */ process.cwd(), process.env.STORAGE_ROOT ?? ".storage");
       instance = new LocalStorageAdapter(root);
       return instance;
     }
