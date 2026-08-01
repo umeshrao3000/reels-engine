@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Install, verify, build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: reels_engine_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/reels_engine_ci?schema=public
+      STORAGE_DRIVER: local
+      STORAGE_ROOT: .storage
+      ADMIN_PASSCODE: ci-placeholder-passcode
+      ADMIN_SESSION_SECRET: ci-placeholder-session-secret
+      # playwright is a devDependency but nothing in CI drives a browser yet —
+      # skip the ~300MB Chromium download until something actually needs it.
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js (LTS, pinned via .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      # npm ci installs exactly what package-lock.json pins — no drift, no
+      # "works on my machine" surprises.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      # Generates .next/types (e.g. the RouteContext helper used by route
+      # handlers) — required before typecheck can see them.
+      - name: Next.js typegen
+        run: npx next typegen
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # Applies every committed migration to a throwaway Postgres instance.
+      # If the migration history doesn't apply cleanly, CI fails here.
+      - name: Verify Prisma migrations apply cleanly
+        run: npx prisma migrate deploy
+
+      - name: Build
+        run: npm run build
+
+      # No test suite yet — this stays green (npm skips) until one exists,
+      # then starts enforcing automatically. Do not replace with a fake
+      # always-pass script.
+      - name: Unit tests (when present)
+        run: npm test --if-present
+
+      # Hard gate: any critical-severity advisory fails the build.
+      - name: Security audit (critical)
+        run: npm audit --audit-level=critical
+
+      # Informational only: surfaces high/moderate advisories in the log
+      # without blocking merges on upstream issues we can't fix directly
+      # (e.g. transitive advisories inside next's own dependency tree).
+      - name: Security audit (high, informational)
+        if: always()
+        continue-on-error: true
+        run: npm audit --audit-level=high

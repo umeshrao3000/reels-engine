@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ProjectStatus {
+  DRAFT // created, not yet paid
+  PAID // payment confirmed, queued for editing
+  IN_PROGRESS // editor working on it
+  QUALITY_CHECK
+  COMPLETED
+  DELIVERED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum UploadKind {
+  ORIGINAL
+  PROCESSED
+}
+
+enum UploadSourceType {
+  DIRECT // uploaded to our Storage Service
+  GOOGLE_DRIVE
+  DROPBOX
+  ONEDRIVE
+  WETRANSFER
+  URL
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  status      ProjectStatus @default(DRAFT)
+
+  customerName  String?
+  email         String?
+  phone         String?
+
+  assignedEditor String?
+
+  internalNotes String?
+  editorNotes   String?
+
+  revisionCount Int @default(0)
+
+  // Future service flags (Phase 2+ features, not implemented in V1)
+  keywordsPackage    Boolean @default(false)
+  automationPackage  Boolean @default(false)
+  monitoringPackage  Boolean @default(false)
+
+  shareToken    String  @unique @default(cuid()) // powers the no-login customer status page
+  downloadCount Int     @default(0)
+
+  createdAt      DateTime  @default(now())
+  completedAt    DateTime?
+  deliveredAt    DateTime?
+
+  payments  Payment[]
+  uploads   Upload[]
+  revisions Revision[]
+
+  @@map("projects")
+}
+
+model Payment {
+  id         String        @id @default(cuid())
+  project    Project       @relation(fields: [projectId], references: [id])
+  projectId  String
+
+  amount     Int // in paise (₹500 => 50000)
+  currency   String        @default("INR")
+  provider   String        @default("razorpay")
+  providerOrderId   String?
+  providerPaymentId String?
+  status     PaymentStatus @default(PENDING)
+
+  createdAt  DateTime      @default(now())
+
+  @@index([projectId])
+  @@map("payments")
+}
+
+model Upload {
+  id          String           @id @default(cuid())
+  project     Project          @relation(fields: [projectId], references: [id])
+  projectId   String
+
+  kind        UploadKind
+  sourceType  UploadSourceType
+
+  // For DIRECT uploads: storage key resolved via the Storage Service.
+  // For link-based sources: the external URL as pasted by the customer.
+  location    String
+
+  originalFileName String?
+  mimeType         String?
+  sizeBytes        Int?
+
+  createdAt   DateTime         @default(now())
+
+  @@index([projectId])
+  @@map("uploads")
+}
+
+model Revision {
+  id        String   @id @default(cuid())
+  project   Project  @relation(fields: [projectId], references: [id])
+  projectId String
+
+  note      String
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@map("revisions")
+}
