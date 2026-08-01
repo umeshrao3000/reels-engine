@@ -28,9 +28,17 @@ export default async function PayPage({ params }: { params: Promise<{ id: string
       </h1>
 
       {!awaitingPayment ? (
-        <p className="max-w-sm text-zinc-600 dark:text-zinc-400">
-          Payment confirmed. Your project is in the queue.
-        </p>
+        <>
+          <p className="max-w-sm text-zinc-600 dark:text-zinc-400">
+            Payment confirmed. Your project is in the queue.
+          </p>
+          <a
+            href={`/status/${project.shareToken}`}
+            className="rounded-xl bg-zinc-900 px-5 py-3 font-semibold text-white transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+          >
+            Check Status
+          </a>
+        </>
       ) : !showPaymentForm ? (
         <p className="max-w-sm text-zinc-600 dark:text-zinc-400">
           Got your UTR (<span className="font-mono">{latestPayment?.utr}</span>) — awaiting

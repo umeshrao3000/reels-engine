@@ -1,15 +1,12 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { ADMIN_SESSION_COOKIE, isAdminSessionValid } from "@/lib/modules/admin/session";
+import { isRequestFromAdmin } from "@/lib/modules/admin/session";
 
 export async function PATCH(
   request: Request,
   ctx: RouteContext<"/api/admin/payments/[id]">
 ) {
-  const cookieStore = await cookies();
-  const session = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
-  if (!isAdminSessionValid(session)) {
+  if (!(await isRequestFromAdmin())) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 

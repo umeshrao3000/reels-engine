@@ -1,13 +1,10 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { ADMIN_SESSION_COOKIE, isAdminSessionValid } from "@/lib/modules/admin/session";
+import { isRequestFromAdmin } from "@/lib/modules/admin/session";
 import { PaymentActions } from "@/app/ops/payments/_components/PaymentActions";
 
 export default async function AdminPaymentsPage() {
-  const cookieStore = await cookies();
-  const session = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
-  if (!isAdminSessionValid(session)) {
+  if (!(await isRequestFromAdmin())) {
     redirect("/ops/login");
   }
 
