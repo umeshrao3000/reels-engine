@@ -25,7 +25,7 @@ export default function AdminLoginPage() {
         setError(data.error ?? "Login failed.");
         return;
       }
-      router.push("/ops/payments");
+      router.push("/ops/projects");
       router.refresh();
     } catch {
       setError("Couldn't reach the server.");
