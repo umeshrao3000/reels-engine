@@ -4,8 +4,24 @@ import {
   createAdminSessionToken,
   isPasscodeCorrect,
 } from "@/lib/modules/admin/session";
+import { checkRateLimit, getClientIp } from "@/lib/modules/security/rate-limit";
+
+const LOGIN_ATTEMPT_LIMIT = 5;
+const LOGIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 
 export async function POST(request: Request) {
+  const rateLimit = checkRateLimit(
+    `admin-login:${getClientIp(request)}`,
+    LOGIN_ATTEMPT_LIMIT,
+    LOGIN_ATTEMPT_WINDOW_MS
+  );
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many attempts. Try again later." },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+    );
+  }
+
   let body: { passcode?: string };
   try {
     body = await request.json();

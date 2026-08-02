@@ -3,11 +3,27 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getStorageService } from "@/lib/modules/storage";
 import { classifyUrlSource } from "@/lib/modules/uploads/classify-source";
+import { checkRateLimit, getClientIp } from "@/lib/modules/security/rate-limit";
 
 // Dev-local storage only — revisit once production storage is chosen.
 const MAX_DIRECT_UPLOAD_BYTES = 500 * 1024 * 1024;
 
+const CREATE_PROJECT_LIMIT = 20;
+const CREATE_PROJECT_WINDOW_MS = 10 * 60 * 1000;
+
 export async function POST(request: Request) {
+  const rateLimit = checkRateLimit(
+    `create-project:${getClientIp(request)}`,
+    CREATE_PROJECT_LIMIT,
+    CREATE_PROJECT_WINDOW_MS
+  );
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again later." },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+    );
+  }
+
   let formData: FormData;
   try {
     formData = await request.formData();
