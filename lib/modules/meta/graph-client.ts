@@ -1,9 +1,17 @@
 // Thin wrapper over Meta's Graph API Send endpoint — no SDK dependency,
 // same pattern as lib/modules/payments/razorpay.ts (a single fetch call,
 // throws on a non-2xx response). Base URL is overridable via
-// META_GRAPH_API_BASE_URL so tests can point it at a local stand-in
-// instead of the real graph.facebook.com.
-const GRAPH_API_BASE_URL = process.env.META_GRAPH_API_BASE_URL || "https://graph.facebook.com";
+// META_GRAPH_API_BASE_URL so tests can point it at a local stand-in.
+//
+// Host is graph.instagram.com (Instagram Login), not graph.facebook.com —
+// per the OAuth Architecture decision: this product connects Instagram
+// Business accounts directly (Instagram Login), not via a linked Facebook
+// Page (Facebook Login for Business), so tokens obtained by
+// lib/modules/meta/instagram-oauth.ts are Instagram User access tokens,
+// valid only against the graph.instagram.com host. Same env var as
+// instagram-oauth.ts's graph-hosted calls — one override point for "the
+// Graph API host" across both messaging and OAuth.
+const GRAPH_API_BASE_URL = process.env.META_GRAPH_API_BASE_URL || "https://graph.instagram.com";
 const GRAPH_API_VERSION = "v21.0";
 
 export type SendPrivateReplyResponse = {

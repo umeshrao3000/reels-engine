@@ -150,6 +150,9 @@ model SocialAccount {
   pageAccessToken     String // encrypted at rest via lib/crypto.ts
   instagramUsername   String?
   isConnected         Boolean             @default(true)
+  status              SocialAccountStatus @default(ACTIVE) // OAuth milestone: activates the
+  // enum defined above (unused since Milestone 1) — distinguishes
+  // user-disconnected from token-expired, which isConnected alone can't.
   tokenExpiresAt      DateTime? // added in schema review: required for the dashboard's
   // expiry-warning UI (blueprint Section 14/15) — a plain
   // isConnected boolean alone can't distinguish "token expired"
