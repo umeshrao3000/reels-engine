@@ -36,6 +36,9 @@ export default async function ProtectedOpsLayout({
           <Link href="/ops/campaigns" className="hover:text-zinc-900 dark:hover:text-zinc-100">
             Campaigns
           </Link>
+          <Link href="/ops/monitoring" className="hover:text-zinc-900 dark:hover:text-zinc-100">
+            Monitoring
+          </Link>
         </nav>
       </header>
       <main className="flex flex-1 flex-col">{children}</main>
