@@ -39,3 +39,29 @@ export async function sendInstagramPrivateReply(params: {
 
   return response.json();
 }
+
+export type SendPublicReplyResponse = {
+  id: string;
+};
+
+/**
+ * Posts a public reply on a given Instagram comment — a new, visible
+ * comment on the same media, distinct from the private-reply Send API
+ * above. https://developers.facebook.com/docs/marketing-api/reference/instagram-comment/replies
+ */
+export async function sendInstagramPublicReply(params: {
+  commentId: string;
+  text: string;
+  pageAccessToken: string;
+}): Promise<SendPublicReplyResponse> {
+  const url = `${GRAPH_API_BASE_URL}/${GRAPH_API_VERSION}/${encodeURIComponent(params.commentId)}/replies?access_token=${encodeURIComponent(params.pageAccessToken)}&message=${encodeURIComponent(params.text)}`;
+
+  const response = await fetch(url, { method: "POST" });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Meta public reply failed (${response.status}): ${detail}`);
+  }
+
+  return response.json();
+}
