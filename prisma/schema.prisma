@@ -196,6 +196,7 @@ model Lead {
 
 enum DeliveryStatus {
   PENDING
+  MATCHED
   DM_SENT
   PUBLIC_REPLIED
   SUCCESS

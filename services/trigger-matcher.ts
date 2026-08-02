@@ -1,0 +1,135 @@
+import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
+import { normalizeCommentText } from "@/utils/normalize-comment";
+
+// Single responsibility (per REELS_ENGINE_V1_BLUEPRINT.md Section 1 & 6):
+// matches a persisted ConversionLog row against the active Campaign(s) for
+// its Reel, records the outcome, and upserts a Lead on match. Does not send
+// DMs, does not send public replies, does not call any Meta API, and is not
+// wired to a scheduler — that's private-reply.ts / public-reply.ts / the
+// Vercel Cron consumer (Milestones 4+).
+
+export type MatchOutcome = "matched" | "skipped_no_campaign" | "skipped_no_keyword" | "already_processed";
+
+export type MatchResult = {
+  conversionLogId: string;
+  outcome: MatchOutcome;
+  campaignId?: string;
+  matchedKeyword?: string;
+  leadId?: string;
+};
+
+function extractMediaId(rawPayload: Prisma.JsonValue | null): string | undefined {
+  if (!rawPayload || typeof rawPayload !== "object" || Array.isArray(rawPayload)) return undefined;
+  const media = (rawPayload as Record<string, unknown>).media;
+  if (!media || typeof media !== "object" || Array.isArray(media)) return undefined;
+  const id = (media as Record<string, unknown>).id;
+  return typeof id === "string" ? id : undefined;
+}
+
+function extractUsername(rawPayload: Prisma.JsonValue | null): string | undefined {
+  if (!rawPayload || typeof rawPayload !== "object" || Array.isArray(rawPayload)) return undefined;
+  const from = (rawPayload as Record<string, unknown>).from;
+  if (!from || typeof from !== "object" || Array.isArray(from)) return undefined;
+  const username = (from as Record<string, unknown>).username;
+  return typeof username === "string" ? username : undefined;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Word-boundary match, not substring: a "deal" keyword must not fire on
+// "dealer". Both sides are already lowercase by the time they get here.
+function findMatchedKeyword(normalizedText: string, keywords: string[]): string | undefined {
+  return keywords.find((keyword) => {
+    if (!keyword) return false;
+    return new RegExp(`\\b${escapeRegExp(keyword)}\\b`).test(normalizedText);
+  });
+}
+
+/**
+ * Matches a single persisted ConversionLog row. Idempotent: a row not still
+ * at PENDING is assumed already processed (matched or skipped by an earlier
+ * run) and is left untouched rather than re-matched.
+ */
+export async function matchConversionLog(conversionLogId: string): Promise<MatchResult> {
+  const log = await prisma.conversionLog.findUniqueOrThrow({ where: { id: conversionLogId } });
+
+  if (log.status !== "PENDING") {
+    logger.info("trigger.match.already_processed", { conversionLogId, status: log.status });
+    return { conversionLogId, outcome: "already_processed" };
+  }
+
+  const mediaId = extractMediaId(log.rawPayload);
+  const campaigns = mediaId
+    ? await prisma.campaign.findMany({
+        where: { instagramMediaId: mediaId, isActive: true },
+        orderBy: { createdAt: "asc" },
+      })
+    : [];
+
+  const normalizedText = normalizeCommentText(log.commentText);
+
+  for (const campaign of campaigns) {
+    const matchedKeyword = findMatchedKeyword(normalizedText, campaign.triggerKeywords);
+    if (!matchedKeyword) continue;
+
+    const lead = log.instagramUserId
+      ? await prisma.lead.upsert({
+          where: { instagramUserId: log.instagramUserId },
+          create: {
+            instagramUserId: log.instagramUserId,
+            handle: extractUsername(log.rawPayload) ?? null,
+          },
+          update: {
+            handle: extractUsername(log.rawPayload) ?? undefined,
+            lastInteractedAt: new Date(),
+          },
+        })
+      : null;
+
+    await prisma.conversionLog.update({
+      where: { id: log.id },
+      data: {
+        campaignId: campaign.id,
+        leadId: lead?.id,
+        matchedKeyword,
+        status: "MATCHED",
+      },
+    });
+
+    logger.info("trigger.match.matched", { conversionLogId, campaignId: campaign.id, matchedKeyword });
+    return { conversionLogId, outcome: "matched", campaignId: campaign.id, matchedKeyword, leadId: lead?.id };
+  }
+
+  const outcome: MatchOutcome = campaigns.length === 0 ? "skipped_no_campaign" : "skipped_no_keyword";
+  await prisma.conversionLog.update({
+    where: { id: log.id },
+    data: { status: "SKIPPED" },
+  });
+  logger.info("trigger.match.skipped", { conversionLogId, reason: outcome });
+  return { conversionLogId, outcome };
+}
+
+/**
+ * Batch entry point over every still-PENDING row, oldest first. Not a queue
+ * consumer or scheduler in its own right (no polling, no retries) — just
+ * matchConversionLog applied to whatever is waiting, for a future Vercel
+ * Cron tick (or a manual run) to call.
+ */
+export async function matchPendingConversionLogs(limit = 50): Promise<MatchResult[]> {
+  const pending = await prisma.conversionLog.findMany({
+    where: { status: "PENDING" },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+    select: { id: true },
+  });
+
+  const results: MatchResult[] = [];
+  for (const { id } of pending) {
+    results.push(await matchConversionLog(id));
+  }
+  return results;
+}
