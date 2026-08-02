@@ -27,6 +27,16 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/admin/proj
     return NextResponse.json({ error: "Project not found." }, { status: 404 });
   }
 
+  if (typeof body.assignedEditor === "string" && body.assignedEditor.length > 100) {
+    return NextResponse.json({ error: "Editor name is too long." }, { status: 400 });
+  }
+  if (typeof body.internalNotes === "string" && body.internalNotes.length > 5000) {
+    return NextResponse.json({ error: "Internal notes are too long." }, { status: 400 });
+  }
+  if (typeof body.editorNotes === "string" && body.editorNotes.length > 5000) {
+    return NextResponse.json({ error: "Editor notes are too long." }, { status: 400 });
+  }
+
   const data: {
     assignedEditor?: string | null;
     internalNotes?: string | null;
