@@ -45,7 +45,7 @@ export default function Home() {
 
             <div className="grid w-full max-w-xs grid-cols-2 gap-3">
               <ServiceButton status="future" label="Keywords" detail="Coming soon" />
-              <ServiceButton status="future" label="Automation" detail="Coming soon" />
+              <ServiceButton status="active" href="/ops/login" label="Automation" detail="Admin sign-in" />
               <ServiceButton status="future" label="Monitoring" detail="Coming soon" />
             </div>
           </div>
