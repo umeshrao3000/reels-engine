@@ -73,7 +73,7 @@ export default async function StatusPage({ params }: { params: Promise<{ token: 
       <div className="flex items-center gap-3">
         <CopyShareLinkButton />
         <Link
-          href="/upload"
+          href="/"
           className="text-xs font-medium text-zinc-500 underline hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
         >
           Upload another Reel

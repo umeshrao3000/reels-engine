@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PhoneMockup } from "@/app/_components/PhoneMockup";
 import { ServiceButton } from "@/app/_components/ServiceButton";
+import { UploadForm } from "@/app/upload/_components/UploadForm";
 
 export default function Home() {
   return (
@@ -33,15 +34,16 @@ export default function Home() {
               finished Reel ready to post.
             </p>
 
+            <div className="flex flex-col items-center gap-1">
+              <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+                Start Your Reel Makeover
+              </h2>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">₹500 per Reel</p>
+            </div>
+
+            <UploadForm />
+
             <div className="grid w-full max-w-xs grid-cols-2 gap-3">
-              <div className="col-span-2">
-                <ServiceButton
-                  status="active"
-                  href="/upload"
-                  label="Reel Makeover"
-                  detail="₹500 per Reel"
-                />
-              </div>
               <ServiceButton status="future" label="Keywords" detail="Coming soon" />
               <ServiceButton status="future" label="Automation" detail="Coming soon" />
               <ServiceButton status="future" label="Monitoring" detail="Coming soon" />
