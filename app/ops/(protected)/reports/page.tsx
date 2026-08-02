@@ -1,12 +1,19 @@
 import { prisma } from "@/lib/prisma";
+import { OWNER_TEST_PAYMENT_PROVIDER } from "@/lib/modules/testing/owner-test-mode";
 
 export default async function AdminReportsPage() {
+  // Owner-test-mode payments are excluded from revenue/verified-count so
+  // repeated QA runs never inflate these operational numbers.
   const [totalProjects, statusCounts, pendingVerification, paidAgg, downloadAgg] =
     await Promise.all([
       prisma.project.count(),
       prisma.project.groupBy({ by: ["status"], _count: { _all: true } }),
       prisma.payment.count({ where: { status: "PENDING_VERIFICATION" } }),
-      prisma.payment.aggregate({ where: { status: "PAID" }, _sum: { amount: true }, _count: true }),
+      prisma.payment.aggregate({
+        where: { status: "PAID", provider: { not: OWNER_TEST_PAYMENT_PROVIDER } },
+        _sum: { amount: true },
+        _count: true,
+      }),
       prisma.project.aggregate({ _sum: { downloadCount: true } }),
     ]);
 
