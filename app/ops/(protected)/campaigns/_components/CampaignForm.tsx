@@ -7,7 +7,6 @@ type CampaignFormValues = {
   name: string;
   socialAccountId: string;
   instagramMediaId: string;
-  triggerKeywords: string;
   dmTemplate: string;
   publicReplyTemplate: string;
   isActive: boolean;
@@ -34,12 +33,12 @@ export function CampaignForm({
       name: "",
       socialAccountId: socialAccounts[0]?.id ?? "",
       instagramMediaId: "",
-      triggerKeywords: "",
       dmTemplate: "",
       publicReplyTemplate: "",
       isActive: true,
     }
   );
+  const [initialKeywords, setInitialKeywords] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,12 +51,14 @@ export function CampaignForm({
     setBusy(true);
     setError(null);
     try {
+      const body =
+        mode === "create" ? { ...values, initialKeywords } : values;
       const res = await fetch(
         mode === "create" ? "/api/admin/campaigns" : `/api/admin/campaigns/${campaignId}`,
         {
           method: mode === "create" ? "POST" : "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(values),
+          body: JSON.stringify(body),
         }
       );
       if (!res.ok) {
@@ -121,17 +122,23 @@ export function CampaignForm({
         />
       </label>
 
-      <label className={LABEL_CLASS}>
-        Trigger keywords (comma-separated)
-        <input
-          type="text"
-          required
-          value={values.triggerKeywords}
-          onChange={(e) => set("triggerKeywords", e.target.value)}
-          placeholder="deal, buy, link"
-          className={FIELD_CLASS}
-        />
-      </label>
+      {mode === "create" ? (
+        <label className={LABEL_CLASS}>
+          Initial keywords (comma or newline separated)
+          <textarea
+            required
+            rows={2}
+            value={initialKeywords}
+            onChange={(e) => setInitialKeywords(e.target.value)}
+            placeholder={"deal, buy, link"}
+            className={FIELD_CLASS}
+          />
+        </label>
+      ) : (
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+          Keywords are managed below, under Keyword Management.
+        </p>
+      )}
 
       <label className={LABEL_CLASS}>
         DM template

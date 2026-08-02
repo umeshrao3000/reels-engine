@@ -171,7 +171,13 @@ model Campaign {
   socialAccountId     String
   instagramMediaId    String // target Reel ID
   name                String
-  triggerKeywords     String[] // stored lowercase: ["deal", "buy", "link"]
+  // Derived cache, not directly editable: always equal to the currently
+  // active Keyword rows for this campaign (see lib/modules/keywords), kept
+  // in sync transactionally by the Keyword service on every CRUD/toggle.
+  // Exists so services/trigger-matcher.ts (Milestone 3) keeps reading a
+  // plain lowercase string array unchanged — no matching-engine redesign
+  // required for Keyword Management (this milestone) to plug in.
+  triggerKeywords     String[]
   dmTemplate          String
   publicReplyTemplate String
   isActive            Boolean         @default(true)
@@ -179,9 +185,30 @@ model Campaign {
   updatedAt           DateTime        @updatedAt
 
   conversionLogs      ConversionLog[]
+  keywords            Keyword[]
 
   @@index([instagramMediaId, isActive])
   @@map("campaigns")
+}
+
+// Keyword Management (additive to the Campaign model, per the agreed
+// no-schema-redesign rule): the source of truth for individual keyword
+// records (add/edit/delete/enable/disable). Campaign.triggerKeywords is
+// derived from the active rows here — the Trigger Matching Engine keeps
+// reading that array and is otherwise untouched.
+model Keyword {
+  id         String   @id @default(cuid())
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId String
+  value      String // normalized: trimmed, lowercased
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([campaignId, value])
+  @@index([campaignId])
+  @@index([campaignId, isActive])
+  @@map("keywords")
 }
 
 model Lead {

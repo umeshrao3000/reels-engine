@@ -1,19 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isRequestFromAdmin } from "@/lib/modules/admin/session";
-
-// Splits a comma-separated keyword string into a normalized, deduped,
-// lowercase array — the single place triggerKeywords normalization
-// happens, so trigger-matcher.ts's "stored lowercase" assumption
-// (Milestone 3) always holds regardless of what the admin typed.
-function normalizeKeywords(raw: string): string[] {
-  const seen = new Set<string>();
-  for (const part of raw.split(",")) {
-    const keyword = part.trim().toLowerCase();
-    if (keyword) seen.add(keyword);
-  }
-  return [...seen];
-}
+import { normalizeKeywordList } from "@/lib/modules/keywords/normalize";
 
 export async function POST(request: Request) {
   if (!(await isRequestFromAdmin())) {
@@ -24,7 +12,7 @@ export async function POST(request: Request) {
     name?: string;
     socialAccountId?: string;
     instagramMediaId?: string;
-    triggerKeywords?: string;
+    initialKeywords?: string;
     dmTemplate?: string;
     publicReplyTemplate?: string;
     isActive?: boolean;
@@ -53,9 +41,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const triggerKeywords = normalizeKeywords(body.triggerKeywords ?? "");
+  const { values: triggerKeywords, rejectedTooLong } = normalizeKeywordList(body.initialKeywords ?? "");
   if (triggerKeywords.length === 0) {
-    return NextResponse.json({ error: "At least one trigger keyword is required." }, { status: 400 });
+    return NextResponse.json(
+      {
+        error:
+          rejectedTooLong.length > 0
+            ? "At least one trigger keyword is required (100 characters max each)."
+            : "At least one trigger keyword is required.",
+      },
+      { status: 400 }
+    );
   }
 
   const dmTemplate = body.dmTemplate?.trim();
@@ -88,6 +84,7 @@ export async function POST(request: Request) {
       dmTemplate,
       publicReplyTemplate,
       isActive: body.isActive ?? true,
+      keywords: { create: triggerKeywords.map((value) => ({ value })) },
     },
   });
 

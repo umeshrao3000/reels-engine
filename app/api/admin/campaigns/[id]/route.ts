@@ -2,15 +2,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isRequestFromAdmin } from "@/lib/modules/admin/session";
 
-function normalizeKeywords(raw: string): string[] {
-  const seen = new Set<string>();
-  for (const part of raw.split(",")) {
-    const keyword = part.trim().toLowerCase();
-    if (keyword) seen.add(keyword);
-  }
-  return [...seen];
-}
-
 export async function PATCH(request: Request, ctx: RouteContext<"/api/admin/campaigns/[id]">) {
   if (!(await isRequestFromAdmin())) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
@@ -23,10 +14,12 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/admin/camp
     return NextResponse.json({ error: "Campaign not found." }, { status: 404 });
   }
 
+  // Note: triggerKeywords is intentionally not accepted here — it's a
+  // derived cache maintained by lib/modules/keywords/keyword-service.ts.
+  // Keyword edits go through /api/admin/campaigns/[id]/keywords instead.
   let body: {
     name?: string;
     instagramMediaId?: string;
-    triggerKeywords?: string;
     dmTemplate?: string;
     publicReplyTemplate?: string;
     isActive?: boolean;
@@ -40,7 +33,6 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/admin/camp
   const data: {
     name?: string;
     instagramMediaId?: string;
-    triggerKeywords?: string[];
     dmTemplate?: string;
     publicReplyTemplate?: string;
     isActive?: boolean;
@@ -63,14 +55,6 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/admin/camp
       );
     }
     data.instagramMediaId = instagramMediaId;
-  }
-
-  if (body.triggerKeywords !== undefined) {
-    const triggerKeywords = normalizeKeywords(body.triggerKeywords);
-    if (triggerKeywords.length === 0) {
-      return NextResponse.json({ error: "At least one trigger keyword is required." }, { status: 400 });
-    }
-    data.triggerKeywords = triggerKeywords;
   }
 
   if (body.dmTemplate !== undefined) {

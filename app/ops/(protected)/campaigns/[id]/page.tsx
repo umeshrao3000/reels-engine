@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { CampaignForm } from "@/app/ops/(protected)/campaigns/_components/CampaignForm";
 import { DeleteCampaignButton } from "./_components/DeleteCampaignButton";
+import { KeywordManagement } from "./_components/KeywordManagement";
 
 export default async function EditCampaignPage({
   params,
@@ -13,7 +14,10 @@ export default async function EditCampaignPage({
 
   const campaign = await prisma.campaign.findUnique({
     where: { id },
-    include: { socialAccount: { select: { instagramUsername: true, instagramBusinessId: true } } },
+    include: {
+      socialAccount: { select: { instagramUsername: true, instagramBusinessId: true } },
+      keywords: { orderBy: { value: "asc" } },
+    },
   });
   if (!campaign) notFound();
 
@@ -34,11 +38,15 @@ export default async function EditCampaignPage({
           name: campaign.name,
           socialAccountId: campaign.socialAccountId,
           instagramMediaId: campaign.instagramMediaId,
-          triggerKeywords: campaign.triggerKeywords.join(", "),
           dmTemplate: campaign.dmTemplate,
           publicReplyTemplate: campaign.publicReplyTemplate,
           isActive: campaign.isActive,
         }}
+      />
+
+      <KeywordManagement
+        campaignId={campaign.id}
+        keywords={campaign.keywords.map((k) => ({ id: k.id, value: k.value, isActive: k.isActive }))}
       />
 
       <DeleteCampaignButton campaignId={campaign.id} />
