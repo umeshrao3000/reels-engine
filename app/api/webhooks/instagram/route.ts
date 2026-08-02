@@ -7,6 +7,7 @@ import {
   verifySignature,
   verifySubscriptionChallenge,
 } from "@/services/webhook-handler";
+import { runPipeline } from "@/services/pipeline-orchestrator";
 
 // Meta doesn't publish a fixed per-IP webhook delivery rate, so this is a
 // defensive ceiling (not a documented Meta limit) — generous enough not to
@@ -76,6 +77,26 @@ export async function POST(request: Request) {
   // on the next attempt (REELS_ENGINE_V1_BLUEPRINT.md Section 13).
   const result = await ingestCommentEvent(payload);
   logger.info("webhook.ingest.completed", result);
+
+  // Persistence is what "ack" guarantees — per the comment above, never ack
+  // an unpersisted event. Everything past this point (match/DM/public
+  // reply) is best-effort within this request: a failure here doesn't
+  // un-persist the row (it's already durable, with its own status recorded
+  // by whichever stage it stopped at), so it must never turn a successful
+  // ack into a 500. No queue exists yet (Milestone 6 scope), so running the
+  // pipeline synchronously here — awaited before the response — is what
+  // makes receipt of a webhook actually drive the full pipeline today.
+  for (const conversionLogId of result.persistedIds) {
+    try {
+      const pipelineResult = await runPipeline(conversionLogId);
+      logger.info("webhook.pipeline.completed", pipelineResult);
+    } catch (err) {
+      logger.error("webhook.pipeline.unexpected_error", {
+        conversionLogId,
+        error: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  }
 
   return NextResponse.json({ ok: true });
 }
