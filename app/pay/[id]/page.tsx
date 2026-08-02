@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { generateUpiQrDataUrl, REEL_MAKEOVER_AMOUNT_PAISE, UPI_ID } from "@/lib/modules/payments/upi";
+import { OWNER_TEST_PAYMENT_PROVIDER } from "@/lib/modules/testing/owner-test-mode";
 import { CopyUpiButton } from "@/app/pay/[id]/_components/CopyUpiButton";
 import { UtrForm } from "@/app/pay/[id]/_components/UtrForm";
 
@@ -30,7 +31,9 @@ export default async function PayPage({ params }: { params: Promise<{ id: string
       {!awaitingPayment ? (
         <>
           <p className="max-w-sm text-zinc-600 dark:text-zinc-400">
-            Payment confirmed. Your project is in the queue.
+            {latestPayment?.provider === OWNER_TEST_PAYMENT_PROVIDER
+              ? "Payment Verified (Owner Test). Your project is in the queue."
+              : "Payment confirmed. Your project is in the queue."}
           </p>
           <a
             href={`/status/${project.shareToken}`}

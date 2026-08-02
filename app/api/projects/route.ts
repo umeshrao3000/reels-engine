@@ -4,12 +4,38 @@ import { prisma } from "@/lib/prisma";
 import { getStorageService } from "@/lib/modules/storage";
 import { classifyUrlSource } from "@/lib/modules/uploads/classify-source";
 import { checkRateLimit, getClientIp } from "@/lib/modules/security/rate-limit";
+import { REEL_MAKEOVER_AMOUNT_PAISE } from "@/lib/modules/payments/upi";
+import {
+  isOwnerTestModeEnabled,
+  OWNER_TEST_PAYMENT_PROVIDER,
+} from "@/lib/modules/testing/owner-test-mode";
 
 // Dev-local storage only — revisit once production storage is chosen.
 const MAX_DIRECT_UPLOAD_BYTES = 500 * 1024 * 1024;
 
 const CREATE_PROJECT_LIMIT = 20;
 const CREATE_PROJECT_WINDOW_MS = 10 * 60 * 1000;
+
+// OWNER_TEST_MODE only: simulates a completed payment so the rest of the
+// pipeline (admin verification queue is skipped, everything after it is
+// not) can be exercised end-to-end without a real UPI transaction. Real
+// payment creation (manual UPI / Razorpay) is completely untouched by this
+// — this is an additive step, not a modification of the payment module.
+async function markPaidForOwnerTestMode(projectId: string): Promise<void> {
+  await prisma.$transaction([
+    prisma.payment.create({
+      data: {
+        projectId,
+        amount: REEL_MAKEOVER_AMOUNT_PAISE,
+        currency: "INR",
+        provider: OWNER_TEST_PAYMENT_PROVIDER,
+        status: "PAID",
+        verifiedAt: new Date(),
+      },
+    }),
+    prisma.project.update({ where: { id: projectId }, data: { status: "PAID" } }),
+  ]);
+}
 
 export async function POST(request: Request) {
   const rateLimit = checkRateLimit(
@@ -67,6 +93,10 @@ export async function POST(request: Request) {
       },
     });
 
+    if (isOwnerTestModeEnabled()) {
+      await markPaidForOwnerTestMode(project.id);
+    }
+
     return NextResponse.json({ projectId: project.id, shareToken: project.shareToken }, { status: 201 });
   }
 
@@ -92,6 +122,10 @@ export async function POST(request: Request) {
         },
       },
     });
+
+    if (isOwnerTestModeEnabled()) {
+      await markPaidForOwnerTestMode(project.id);
+    }
 
     return NextResponse.json({ projectId: project.id, shareToken: project.shareToken }, { status: 201 });
   }
