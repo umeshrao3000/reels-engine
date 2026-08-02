@@ -33,6 +33,9 @@ export default async function ProtectedOpsLayout({
           >
             Social Accounts
           </Link>
+          <Link href="/ops/campaigns" className="hover:text-zinc-900 dark:hover:text-zinc-100">
+            Campaigns
+          </Link>
         </nav>
       </header>
       <main className="flex flex-1 flex-col">{children}</main>
