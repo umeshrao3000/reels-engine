@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { logger } from "@/lib/logger";
 import { checkRateLimit, getClientIp } from "@/lib/modules/security/rate-limit";
 import {
@@ -7,6 +7,7 @@ import {
   verifySignature,
   verifySubscriptionChallenge,
 } from "@/services/webhook-handler";
+import { runPipeline } from "@/services/pipeline-orchestrator";
 
 // Meta doesn't publish a fixed per-IP webhook delivery rate, so this is a
 // defensive ceiling (not a documented Meta limit) — generous enough not to
@@ -76,6 +77,27 @@ export async function POST(request: Request) {
   // on the next attempt (REELS_ENGINE_V1_BLUEPRINT.md Section 13).
   const result = await ingestCommentEvent(payload);
   logger.info("webhook.ingest.completed", result);
+
+  // Persistence is what "ack" guarantees — the response below must go out
+  // without waiting on any outbound Meta call. `after()` schedules the
+  // pipeline to run once the response has been sent (Vercel keeps the
+  // invocation alive via waitUntil until it finishes), so the ack is never
+  // blocked on match/DM/public-reply latency. No queue exists yet
+  // (Milestone 6 scope) — this is the "simple asynchronous dispatch" that
+  // makes receipt of a webhook drive the full pipeline without one.
+  after(async () => {
+    for (const conversionLogId of result.persistedIds) {
+      try {
+        const pipelineResult = await runPipeline(conversionLogId);
+        logger.info("webhook.pipeline.completed", pipelineResult);
+      } catch (err) {
+        logger.error("webhook.pipeline.unexpected_error", {
+          conversionLogId,
+          error: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
+    }
+  });
 
   return NextResponse.json({ ok: true });
 }

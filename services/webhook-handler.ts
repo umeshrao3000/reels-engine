@@ -77,6 +77,7 @@ export type IngestResult = {
   persisted: number;
   duplicates: number;
   skipped: number;
+  persistedIds: string[];
 };
 
 /**
@@ -90,7 +91,7 @@ export type IngestResult = {
  * treated as a duplicate, not an error.
  */
 export async function ingestCommentEvent(payload: InstagramWebhookPayload): Promise<IngestResult> {
-  const result: IngestResult = { persisted: 0, duplicates: 0, skipped: 0 };
+  const result: IngestResult = { persisted: 0, duplicates: 0, skipped: 0, persistedIds: [] };
 
   for (const entry of payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
@@ -116,6 +117,7 @@ export async function ingestCommentEvent(payload: InstagramWebhookPayload): Prom
           },
         });
         result.persisted += 1;
+        result.persistedIds.push(log.id);
         dispatchProcessing(log.id);
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
