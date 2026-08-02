@@ -129,3 +129,104 @@ model Revision {
   @@index([projectId])
   @@map("revisions")
 }
+
+// ============================================================
+// Instagram Engagement Automation Engine — additive, V1 pivot.
+// Project/Payment/Upload/Revision above are untouched and still
+// live; this milestone adds new models only, per the agreed
+// rollback strategy (no destructive change until the new system
+// is proven). See REELS_ENGINE_V1_BLUEPRINT.md.
+// ============================================================
+
+enum SocialAccountStatus {
+  ACTIVE
+  DISCONNECTED
+  TOKEN_EXPIRED
+}
+
+model SocialAccount {
+  id                  String              @id @default(cuid())
+  instagramBusinessId String              @unique
+  pageAccessToken     String // encrypted at rest via lib/crypto.ts
+  instagramUsername   String?
+  isConnected         Boolean             @default(true)
+  tokenExpiresAt      DateTime? // added in schema review: required for the dashboard's
+  // expiry-warning UI (blueprint Section 14/15) — a plain
+  // isConnected boolean alone can't distinguish "token expired"
+  // from "owner manually disconnected."
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  campaigns           Campaign[]
+
+  @@map("social_accounts")
+}
+
+model Campaign {
+  id                  String          @id @default(cuid())
+  socialAccount       SocialAccount   @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  socialAccountId     String
+  instagramMediaId    String // target Reel ID
+  name                String
+  triggerKeywords     String[] // stored lowercase: ["deal", "buy", "link"]
+  dmTemplate          String
+  publicReplyTemplate String
+  isActive            Boolean         @default(true)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  conversionLogs      ConversionLog[]
+
+  @@index([instagramMediaId, isActive])
+  @@map("campaigns")
+}
+
+model Lead {
+  id               String          @id @default(cuid())
+  instagramUserId  String          @unique // one Lead per person, across all campaigns
+  handle           String?
+  lastInteractedAt DateTime        @default(now())
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  conversionLogs   ConversionLog[]
+
+  @@map("leads")
+}
+
+enum DeliveryStatus {
+  PENDING
+  DM_SENT
+  PUBLIC_REPLIED
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+model ConversionLog {
+  id              String         @id @default(cuid())
+  campaign        Campaign?      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId      String? // nullable: schema review resolved this so every inbound
+  // webhook event can be persisted immediately (per the
+  // verify -> persist -> ack -> process order already agreed),
+  // including ones that don't match any active campaign.
+  lead            Lead?          @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  leadId          String?
+  commentId       String         @unique // idempotency key — one response per comment,
+  // also the guard against Meta webhook redelivery.
+  commentText     String?
+  instagramUserId String?
+  matchedKeyword  String?
+  status          DeliveryStatus @default(PENDING)
+  errorMessage    String?
+  dmSentAt        DateTime?
+  publicRepliedAt DateTime?
+  retryCount      Int            @default(0)
+  nextRetryAt     DateTime?
+  rawPayload      Json?
+  createdAt       DateTime       @default(now())
+
+  @@index([campaignId])
+  @@index([status])
+  @@map("conversion_logs")
+}
