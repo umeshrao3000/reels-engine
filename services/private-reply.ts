@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { decrypt } from "@/lib/crypto";
 import { sendInstagramPrivateReply } from "@/lib/modules/meta/graph-client";
 
 // Single responsibility (per REELS_ENGINE_V1_BLUEPRINT.md Section 1 & 6):
@@ -58,7 +59,7 @@ export async function sendPrivateReply(conversionLogId: string): Promise<Private
     await sendInstagramPrivateReply({
       commentId: log.commentId,
       text: log.campaign.dmTemplate,
-      pageAccessToken: log.campaign.socialAccount.pageAccessToken,
+      pageAccessToken: decrypt(log.campaign.socialAccount.pageAccessToken),
     });
   } catch (err) {
     const error = err instanceof Error ? err.message : "Unknown error sending private reply";
