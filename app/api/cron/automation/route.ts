@@ -28,14 +28,15 @@ import { CRON_LOCK_TTL_MS, CRON_TIME_BUDGET_MS, CRON_BATCH_LIMIT } from "@/servi
 //     there is no separate "retry-due" entry point to call.
 //  4. Token-refresh sweep    — independent of ConversionLog state.
 //
-// vercel.json currently schedules this once daily (Vercel's Hobby plan
-// rejects any cron more frequent than daily — a tighter interval was
-// attempted and rejected at deploy time). Correctness doesn't depend on
+// Scheduled by .github/workflows/automation-cron.yml (GitHub Actions,
+// every 5 minutes, no cost) rather than Vercel's own cron feature —
+// Vercel's Hobby plan only permits a daily schedule, far too coarse for
+// the 30s-30min retry backoff window. Correctness doesn't depend on
 // cadence — retryCount/nextRetryAt/claim leases all work regardless of how
-// often this fires — but recovery latency does: on Hobby, a transient
-// failure or a reconnect isn't resumed until the next day's tick, not
-// within minutes. Tighten to every few minutes once on a plan that allows
-// it.
+// often this fires — only recovery latency does. GitHub's scheduler is
+// best-effort (can occasionally be delayed under platform load), not a
+// hard real-time guarantee; this route's own claim/retry/lock logic is
+// what's actually authoritative for correctness, not the trigger cadence.
 //
 // Protected by a shared secret (fail-closed: unset CRON_SECRET means
 // nobody is authorized, not "anyone is") and a DB-backed lock so an

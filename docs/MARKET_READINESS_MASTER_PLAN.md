@@ -96,7 +96,7 @@ No milestone here has been started. This document is the plan, not a status repo
 
 **Manual verification:** trigger a real transient failure against a real (sandboxed) Meta test setup and observe recovery without manual intervention; manually expire a test token and confirm the system detects and reflects it without sending further attempts.
 
-**Rollback strategy:** disable the cron trigger (revert `vercel.json`/remove the schedule) to fall back to the current at-most-once, manual-recovery-only behavior; no data loss since retry state lives in existing columns.
+**Rollback strategy:** disable the cron trigger (disable or delete `.github/workflows/automation-cron.yml`) to fall back to the current at-most-once, manual-recovery-only behavior; no data loss since retry state lives in existing columns.
 
 **Definition of completion:** cron-triggered recovery is live and observable in Monitoring (a `FAILED` row that later succeeds via retry is visible in the existing Automation Activity view); token refresh runs on a schedule and is verifiable via `SocialAccount.tokenExpiresAt` advancing without manual OAuth re-connection.
 

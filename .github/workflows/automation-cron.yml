@@ -1,0 +1,47 @@
+name: Automation Cron
+
+# Phase A (Automation Reliability): no-cost production scheduler for
+# /api/cron/automation, replacing Vercel's cron feature (Hobby plan only
+# allows daily, far too coarse for the 30s-30min retry backoff window —
+# see PR #34). This workflow does no repo work of its own; it only pings
+# the already-authenticated, already-lock-protected production endpoint.
+# Application-level claim/retry/lock protections in the route itself
+# remain authoritative — this is a trigger, not where correctness lives.
+#
+# Scheduled runs only start firing once this workflow is on the default
+# branch (GitHub only evaluates `schedule` on main). Requires two repo
+# secrets to be configured (Settings > Secrets and variables > Actions):
+#   AUTOMATION_CRON_URL - the deployed route's full URL
+#   CRON_SECRET         - must exactly match the Vercel production env var
+#                          of the same name
+#
+# GitHub's scheduler is best-effort, not a hard real-time guarantee —
+# triggers can occasionally be delayed under platform load.
+
+on:
+  schedule:
+    # Every 5 minutes, offset 2 minutes from the top of the hour (avoids
+    # piling on at exactly :00 with everyone else's hourly/5-minute jobs).
+    - cron: "2-59/5 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: automation-cron
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  invoke:
+    name: Invoke automation cron endpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Call protected automation endpoint
+        env:
+          AUTOMATION_CRON_URL: ${{ secrets.AUTOMATION_CRON_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 60 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${AUTOMATION_CRON_URL}"
