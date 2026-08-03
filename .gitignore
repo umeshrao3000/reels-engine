@@ -34,7 +34,7 @@ yarn-error.log*
 .env*
 !.env.example
 
-# local dev file storage (Storage Service local adapter)
+# local dev file storage (LocalStorageProvider)
 /.storage
 
 # vercel

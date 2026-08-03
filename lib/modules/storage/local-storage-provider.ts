@@ -1,9 +1,9 @@
 import { mkdir, readFile, stat, unlink, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
-import type { StorageService, StoredFileRef } from "./types";
+import type { StorageProvider, StoredFileRef } from "./types";
 
-export class LocalStorageAdapter implements StorageService {
+export class LocalStorageProvider implements StorageProvider {
   constructor(private readonly root: string) {}
 
   private resolvePath(key: string): string {
@@ -24,7 +24,7 @@ export class LocalStorageAdapter implements StorageService {
 
   async getDownloadUrl(key: string): Promise<string> {
     // Served through our own API route since local disk isn't public.
-    // A cloud adapter would return a signed URL here instead.
+    // A cloud provider would return a signed URL here instead.
     return `/api/storage/${encodeURIComponent(key)}`;
   }
 

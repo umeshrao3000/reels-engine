@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getStorageService } from "@/lib/modules/storage";
+import { getStorageProvider } from "@/lib/modules/storage";
 import { isRequestFromAdmin } from "@/lib/modules/admin/session";
 
 // Dev-local storage only — revisit once production storage is chosen.
@@ -37,7 +37,7 @@ export async function POST(
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const storage = getStorageService();
+  const storage = getStorageProvider();
   const key = `projects/${id}/processed/${randomUUID()}/${file.name}`;
   const stored = await storage.put(key, buffer, file.type || undefined);
 

@@ -1,4 +1,4 @@
-import { getStorageService } from "@/lib/modules/storage";
+import { getStorageProvider } from "@/lib/modules/storage";
 import { isRequestFromAdmin } from "@/lib/modules/admin/session";
 
 // Admin-only file browser (e.g. previewing an upload from the ops panel).
@@ -12,7 +12,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/storage/[...key
   const { key } = await ctx.params;
   const storageKey = key.map(decodeURIComponent).join("/");
 
-  const storage = getStorageService();
+  const storage = getStorageProvider();
   if (!(await storage.exists(storageKey))) {
     return new Response("Not found", { status: 404 });
   }

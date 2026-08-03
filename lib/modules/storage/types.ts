@@ -4,12 +4,12 @@ export type StoredFileRef = {
 };
 
 /**
- * Storage Service abstraction. All file I/O in the app goes through this
+ * Storage Provider abstraction. All file I/O in the app goes through this
  * interface — nothing else may touch the filesystem or a cloud SDK directly.
- * V1 ships only LocalStorageAdapter; swapping in S3-compatible/NAS storage
- * later means adding one adapter here, not touching callers.
+ * Concrete providers (LocalStorageProvider, R2StorageProvider, ...) implement
+ * this once; callers never change when the active provider changes.
  */
-export interface StorageService {
+export interface StorageProvider {
   put(key: string, data: Buffer, contentType?: string): Promise<StoredFileRef>;
   getBuffer(key: string): Promise<Buffer>;
   getDownloadUrl(key: string): Promise<string>;

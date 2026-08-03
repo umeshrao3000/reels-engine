@@ -15,7 +15,7 @@ Status snapshot for go-live planning. This is an assessment, not a launch checkl
 
 ## Not ready — must be resolved before real paying-customer traffic
 
-1. **Production storage backend is not yet chosen.** Local disk does not survive redeploys/restarts on Vercel. This is the single largest blocker to real production use, independent of code quality — a deliberate, disclosed deferral since M0, not an oversight. Owner: M8/launch decision.
+1. **Production storage backend (Cloudflare R2) is implemented but not connected.** `STORAGE_DRIVER` still defaults to `local`; local disk does not survive redeploys/restarts on Vercel. The V1 Production Hardening Sprint's first PR added the `StorageProvider` abstraction (`docs/STORAGE.md`) and a fully-coded `R2StorageProvider`, tested only against a fake client — no bucket/credentials/API keys exist yet. Turning it on is now a config + migration-script task, tracked as its own follow-up milestone rather than an open-ended blocker.
 2. **Razorpay is unverified end-to-end** and not wired into any customer-facing UI. Not a blocker for launch on manual UPI alone, but must not be switched on without a manual click-through test against a real deployment first (cannot be tested from this sandbox — network policy blocks Razorpay's API hosts outright).
 3. **Branch protection on `main`** has not been applied — requires manual action in GitHub repository settings, no API path available from this session.
 
