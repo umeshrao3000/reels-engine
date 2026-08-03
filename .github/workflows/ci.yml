@@ -42,6 +42,9 @@ jobs:
       META_WEBHOOK_VERIFY_TOKEN: ci-placeholder-verify-token
       OAUTH_STATE_SECRET: ci-placeholder-oauth-state-secret
       TOKEN_ENCRYPTION_KEY: FYzvM5BXw9O6F6CoR1n+A5DNL5RSIAB0MWMAax3hbjU=
+      # Phase A (Automation Reliability): required by the /api/cron/automation
+      # auth tests (test/api/cron-automation.test.ts).
+      CRON_SECRET: ci-placeholder-cron-secret
 
     steps:
       - name: Checkout

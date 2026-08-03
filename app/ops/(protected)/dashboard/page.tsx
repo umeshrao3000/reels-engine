@@ -17,6 +17,7 @@ export default async function DashboardPage() {
     activityLogsRaw,
     leadsRaw,
     lastExecutedLog,
+    recoveryCountsRaw,
   ] = await Promise.all([
     prisma.socialAccount.findMany({ orderBy: { createdAt: "desc" } }),
     prisma.campaign.count({ where: { isActive: true } }),
@@ -62,7 +63,23 @@ export default async function DashboardPage() {
       orderBy: { createdAt: "desc" },
       select: { createdAt: true },
     }),
+    // Phase A (Automation Reliability): operational visibility into rows
+    // sitting in a recovery-relevant state — a dead letter, an ambiguous
+    // outcome awaiting manual review, a scheduled retry, or an account
+    // block — none of which are otherwise surfaced anywhere in the UI.
+    prisma.conversionLog.groupBy({
+      by: ["status"],
+      _count: true,
+      where: { status: { in: ["RETRY_PENDING", "ACCOUNT_BLOCKED", "DELIVERY_UNCERTAIN", "DEAD_LETTER"] } },
+    }),
   ]);
+
+  const recoveryCounts = {
+    retryPending: recoveryCountsRaw.find((row) => row.status === "RETRY_PENDING")?._count ?? 0,
+    accountBlocked: recoveryCountsRaw.find((row) => row.status === "ACCOUNT_BLOCKED")?._count ?? 0,
+    deliveryUncertain: recoveryCountsRaw.find((row) => row.status === "DELIVERY_UNCERTAIN")?._count ?? 0,
+    deadLetter: recoveryCountsRaw.find((row) => row.status === "DEAD_LETTER")?._count ?? 0,
+  };
 
   const lastWebhookReceivedAt = recentActivityRaw[0]?.createdAt ?? null;
 
@@ -139,6 +156,7 @@ export default async function DashboardPage() {
         tokenWarnings={tokenWarnings}
         lastWebhookReceivedAt={lastWebhookReceivedAt}
         lastAutomationExecutedAt={lastExecutedLog?.createdAt ?? null}
+        recoveryCounts={recoveryCounts}
       />
     </div>
   );

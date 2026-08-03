@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { normalizeCommentText } from "@/utils/normalize-comment";
+import { runBatchWithDeadline, type BatchOutcome } from "./batch-runner";
 
 // Single responsibility (per REELS_ENGINE_V1_BLUEPRINT.md Section 1 & 6):
 // matches a persisted ConversionLog row against the active Campaign(s) for
@@ -53,6 +54,18 @@ function findMatchedKeyword(normalizedText: string, keywords: string[]): string 
  * Matches a single persisted ConversionLog row. Idempotent: a row not still
  * at PENDING is assumed already processed (matched or skipped by an earlier
  * run) and is left untouched rather than re-matched.
+ *
+ * Phase A (Automation Reliability): the final status write is a
+ * conditional `updateMany` guarded on `status: "PENDING"`, not a plain
+ * `update`. Matching itself has no external side effect (Lead upsert is
+ * already idempotent), so two concurrent calls computing the same result
+ * twice is harmless — what must not happen is both calls *reporting*
+ * "matched" and each triggering their own downstream private-reply send.
+ * The conditional update ensures only the caller that actually flips
+ * PENDING -> MATCHED/SKIPPED gets that outcome; a second, losing caller
+ * sees `count === 0` and reports `already_processed` instead. No claim/
+ * lease state is needed here — unlike private-reply.ts/public-reply.ts,
+ * there's no external call in flight to protect against a crash mid-way.
  */
 export async function matchConversionLog(conversionLogId: string): Promise<MatchResult> {
   const log = await prisma.conversionLog.findUniqueOrThrow({ where: { id: conversionLogId } });
@@ -90,8 +103,8 @@ export async function matchConversionLog(conversionLogId: string): Promise<Match
         })
       : null;
 
-    await prisma.conversionLog.update({
-      where: { id: log.id },
+    const claimed = await prisma.conversionLog.updateMany({
+      where: { id: log.id, status: "PENDING" },
       data: {
         campaignId: campaign.id,
         leadId: lead?.id,
@@ -99,27 +112,39 @@ export async function matchConversionLog(conversionLogId: string): Promise<Match
         status: "MATCHED",
       },
     });
+    if (claimed.count === 0) {
+      logger.info("trigger.match.already_processed", { conversionLogId });
+      return { conversionLogId, outcome: "already_processed" };
+    }
 
     logger.info("trigger.match.matched", { conversionLogId, campaignId: campaign.id, matchedKeyword });
     return { conversionLogId, outcome: "matched", campaignId: campaign.id, matchedKeyword, leadId: lead?.id };
   }
 
   const outcome: MatchOutcome = campaigns.length === 0 ? "skipped_no_campaign" : "skipped_no_keyword";
-  await prisma.conversionLog.update({
-    where: { id: log.id },
+  const claimed = await prisma.conversionLog.updateMany({
+    where: { id: log.id, status: "PENDING" },
     data: { status: "SKIPPED" },
   });
+  if (claimed.count === 0) {
+    logger.info("trigger.match.already_processed", { conversionLogId });
+    return { conversionLogId, outcome: "already_processed" };
+  }
   logger.info("trigger.match.skipped", { conversionLogId, reason: outcome });
   return { conversionLogId, outcome };
 }
 
 /**
- * Batch entry point over every still-PENDING row, oldest first. Not a queue
- * consumer or scheduler in its own right (no polling, no retries) — just
- * matchConversionLog applied to whatever is waiting, for a future Vercel
- * Cron tick (or a manual run) to call.
+ * Batch entry point over every still-PENDING row, oldest first. Called by
+ * the cron route. `deadline` (epoch ms), if given, is checked before each
+ * row — matching has no external call, but the check is applied uniformly
+ * across every batch stage so no stage can quietly run long regardless of
+ * `limit`.
  */
-export async function matchPendingConversionLogs(limit = 50): Promise<MatchResult[]> {
+export async function matchPendingConversionLogs(
+  limit = 50,
+  deadline?: number
+): Promise<BatchOutcome<MatchResult>> {
   const pending = await prisma.conversionLog.findMany({
     where: { status: "PENDING" },
     orderBy: { createdAt: "asc" },
@@ -127,9 +152,5 @@ export async function matchPendingConversionLogs(limit = 50): Promise<MatchResul
     select: { id: true },
   });
 
-  const results: MatchResult[] = [];
-  for (const { id } of pending) {
-    results.push(await matchConversionLog(id));
-  }
-  return results;
+  return runBatchWithDeadline(pending.map((row) => row.id), deadline, matchConversionLog);
 }

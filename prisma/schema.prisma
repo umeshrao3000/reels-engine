@@ -162,6 +162,9 @@ model SocialAccount {
 
   campaigns           Campaign[]
 
+  // Phase A (Automation Reliability): the token-refresh sweep scans for
+  // ACTIVE accounts nearing tokenExpiresAt on every cron tick.
+  @@index([status, tokenExpiresAt])
   @@map("social_accounts")
 }
 
@@ -227,11 +230,56 @@ model Lead {
 enum DeliveryStatus {
   PENDING
   MATCHED
+  // Phase A: explicit in-flight claim states. A row sits here only for the
+  // duration of one lease (see ConversionLog.claimExpiresAt) while the
+  // actual Meta send request is outstanding — never a resting state.
+  DM_SENDING
   DM_SENT
+  PUBLIC_REPLYING
   PUBLIC_REPLIED
   SUCCESS
-  FAILED
+  // Phase A: transient failure, eligible for a scheduled retry once
+  // nextRetryAt has passed (see ConversionLog.pendingStage for which stage).
+  RETRY_PENDING
+  // Phase A: blocked because the owning SocialAccount is not
+  // ACTIVE+isConnected. Recoverable — resumed automatically once the
+  // account reconnects, never auto-retried on a timer.
+  ACCOUNT_BLOCKED
+  // Phase A: the Meta send request's outcome could not be confirmed (no
+  // HTTP response was ever received, or a claim's lease expired before any
+  // outcome was recorded — worker crash/timeout after the request may have
+  // already gone out). Never auto-resent: surfaced for manual review only,
+  // since resending here risks a real duplicate.
+  DELIVERY_UNCERTAIN
+  // Phase A: terminal, non-retryable — either a permanent/validation
+  // failure Meta rejected outright, or a transient failure that exhausted
+  // MAX_RETRY_ATTEMPTS. Distinct from DELIVERY_UNCERTAIN: we know for
+  // certain the send did not (or must not) succeed.
+  DEAD_LETTER
+  FAILED // legacy terminal state; kept for backward compatibility with
+  // existing rows, no longer written by the pipeline as of Phase A —
+  // superseded by RETRY_PENDING/ACCOUNT_BLOCKED/DELIVERY_UNCERTAIN/DEAD_LETTER,
+  // which all carry the classification FAILED never did.
   SKIPPED
+}
+
+// Phase A: which external Meta call a row is associated with while sitting
+// in a non-resting status (RETRY_PENDING/ACCOUNT_BLOCKED/DELIVERY_UNCERTAIN/
+// DEAD_LETTER) — determines which stage a recovery sweep resumes.
+enum PipelineStage {
+  PRIVATE_REPLY
+  PUBLIC_REPLY
+}
+
+// Phase A: how a Meta API (or token-refresh) failure was classified — see
+// lib/modules/meta/meta-api-error.ts. Never derived from message-string
+// matching; always derived from HTTP status / Meta error code, or from the
+// complete absence of an HTTP response (AMBIGUOUS).
+enum MetaErrorClassification {
+  TRANSIENT
+  PERMANENT
+  AUTH
+  AMBIGUOUS
 }
 
 model ConversionLog {
@@ -254,10 +302,60 @@ model ConversionLog {
   publicRepliedAt DateTime?
   retryCount      Int            @default(0)
   nextRetryAt     DateTime?
+
+  // Phase A (Automation Reliability) — atomic claim/lease, structured
+  // failure classification, and captured Meta message ids. All additive;
+  // no existing column changed or removed.
+
+  // Set when a row is atomically claimed into DM_SENDING/PUBLIC_REPLYING;
+  // a stale-claim recovery sweep looks for expired leases here and moves
+  // the row to DELIVERY_UNCERTAIN (never back to a resendable status).
+  claimExpiresAt             DateTime?
+  // Last time a send was actually attempted (claim acquired), success or
+  // failure — distinct from createdAt/dmSentAt/publicRepliedAt.
+  lastAttemptAt               DateTime?
+  // Which external stage this row is waiting/blocked/dead-lettered at.
+  // Set on RETRY_PENDING/ACCOUNT_BLOCKED/DELIVERY_UNCERTAIN/DEAD_LETTER,
+  // cleared on resolution.
+  pendingStage                 PipelineStage?
+  lastFailureClassification    MetaErrorClassification?
+  lastMetaErrorStatus          Int?
+  lastMetaErrorCode            Int?
+  lastMetaErrorSubcode         Int?
+  privateReplyMessageId       String?
+  publicReplyId                String?
+
   rawPayload      Json?
   createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
+  // Retry-due sweep: rows in RETRY_PENDING whose nextRetryAt has passed.
+  @@index([status, nextRetryAt])
+  // Stale-claim sweep: rows in DM_SENDING/PUBLIC_REPLYING whose lease
+  // (claimExpiresAt) has expired.
+  @@index([status, claimExpiresAt])
   @@index([campaignId])
   @@index([status])
   @@map("conversion_logs")
+}
+
+// Phase A: single-row lock so overlapping cron invocations (e.g. a slow
+// run still in flight when the next scheduled tick fires) never process
+// the same batch concurrently. A dedicated row (rather than a Postgres
+// advisory lock) because Prisma's pooled connections don't guarantee the
+// acquire and release of a session-scoped advisory lock happen on the same
+// underlying connection — this uses the same atomic conditional-update
+// pattern as everything else in this milestone instead.
+model CronLock {
+  id          String    @id
+  lockedAt    DateTime?
+  lockedUntil DateTime?
+  // Random per-acquisition token, required to release. Without this, a
+  // holder whose lease already expired (and was reclaimed by a new
+  // holder) could still call release and clear the *new* holder's lock —
+  // release must prove it's releasing the lock it actually acquired, not
+  // just the lock with this id.
+  ownerToken  String?
+
+  @@map("cron_locks")
 }

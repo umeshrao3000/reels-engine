@@ -57,7 +57,7 @@ Every item maps to the MR milestone that closes it. `[ ]` = not started (accurat
 ## Retry and recovery
 
 - [ ] 🔴 `FAILED` rows are automatically retried within a bounded backoff window — *MR-3*
-- [ ] 🔴 A scheduled entry point (cron) actually calls the existing batch-recovery functions — *MR-3*
+- [ ] 🔴 A scheduled entry point (cron) actually calls the existing batch-recovery functions — *MR-3*. **Phase A evidence:** `app/api/cron/automation/route.ts` (fail-closed `CRON_SECRET` auth, DB-backed overlap lock, per-item deadline) runs the matcher/private-reply/public-reply/finalize/token-refresh batches, retry-due rows included automatically. Scheduled by `.github/workflows/automation-cron.yml` — GitHub Actions, every 5 minutes (offset from the hour), no cost, chosen over Vercel's cron (Hobby plan only permits daily, too coarse for the 30s–30min retry backoff window) and over a paid Vercel upgrade. GitHub's scheduler is best-effort, not a hard real-time guarantee; the route's own claim/retry/lock logic is what's actually authoritative for correctness, not the trigger cadence. Not checked — scheduled workflows only start firing once this workflow is on `main`; activation isn't confirmed until the post-merge gate (manual `workflow_dispatch` + one observed scheduled run, no duplicate/overlapping processing) passes.
 - [ ] 🟡 Retry behavior re-verified under a real forced failure in staging — *MR-9*
 - [ ] 🟢 Customer-configurable retry policy — *explicitly deferred, `docs/PRODUCT_BOUNDARY_DECISION.md §5`*
 
