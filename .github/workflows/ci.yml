@@ -13,8 +13,8 @@ permissions:
   contents: read
 
 jobs:
-  ci:
-    name: Install, verify, build
+  unit-and-integration:
+    name: Unit and integration
     runs-on: ubuntu-latest
 
     services:
@@ -80,34 +80,88 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Includes the campaign/keyword API-route tests (test/api/), which
+      # start the just-built production server on an ephemeral port and
+      # exercise the real routes over real HTTP.
       - name: Unit and integration tests
         run: npm test
+
+      # Hard gate: any critical-severity advisory fails the build.
+      - name: Security audit (critical)
+        run: npm audit --audit-level=critical
+
+  playwright-e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: reels_engine_ci_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/reels_engine_ci_e2e?schema=public
+      STORAGE_DRIVER: local
+      STORAGE_ROOT: .storage
+      ADMIN_PASSCODE: ci-placeholder-passcode
+      ADMIN_SESSION_SECRET: ci-placeholder-session-secret
+      META_APP_SECRET: ci-placeholder-meta-app-secret
+      META_WEBHOOK_VERIFY_TOKEN: ci-placeholder-verify-token
+      OAUTH_STATE_SECRET: ci-placeholder-oauth-state-secret
+      TOKEN_ENCRYPTION_KEY: FYzvM5BXw9O6F6CoR1n+A5DNL5RSIAB0MWMAax3hbjU=
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js (LTS, pinned via .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      # Fresh database migrations, applied to this job's own throwaway
+      # Postgres instance — independent from the unit/integration job's.
+      - name: Verify Prisma migrations apply cleanly
+        run: npx prisma migrate deploy
+
+      - name: Build
+        run: npm run build
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
       # Runs the golden-path browser suite against the production build from
       # the Build step above (playwright.config.ts starts it via `npm run
-      # start`) and the same real Postgres instance used by the tests above.
+      # start`) and the same real Postgres instance used above. ADMIN_PASSCODE
+      # and META_APP_SECRET above are explicit test-only placeholders — real
+      # production credentials must never appear in CI; the spec fails
+      # closed with a clear error if either is missing.
       - name: E2E tests (Playwright)
-        run: npx playwright test
+        run: npm run test:e2e
 
-      - name: Upload Playwright report
+      - name: Upload Playwright report, traces and screenshots
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: playwright-report/
+          path: |
+            playwright-report/
+            test-results/
           retention-days: 7
-
-      # Hard gate: any critical-severity advisory fails the build.
-      - name: Security audit (critical)
-        run: npm audit --audit-level=critical
-
-      # Informational only: surfaces high/moderate advisories in the log
-      # without blocking merges on upstream issues we can't fix directly
-      # (e.g. transitive advisories inside next's own dependency tree).
-      - name: Security audit (high, informational)
-        if: always()
-        continue-on-error: true
-        run: npm audit --audit-level=high

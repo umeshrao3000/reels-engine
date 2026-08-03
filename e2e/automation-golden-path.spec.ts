@@ -1,5 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
-import { test, expect, type APIRequestContext } from "@playwright/test";
+import type { APIRequestContext } from "@playwright/test";
+import { test, expect } from "./support/fixtures";
 import { prisma } from "../lib/prisma";
 
 // Golden path: admin login -> campaign create -> keyword add/disable ->
@@ -12,10 +13,15 @@ import { prisma } from "../lib/prisma";
 const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE;
 const META_APP_SECRET = process.env.META_APP_SECRET;
 
-test.skip(
-  !ADMIN_PASSCODE || !META_APP_SECRET,
-  "ADMIN_PASSCODE and META_APP_SECRET must be set to run the automation golden path"
-);
+// Fails closed, not skips: a missing admin passcode or webhook secret means
+// this suite cannot exercise the real auth/signing paths it exists to
+// verify, so silently skipping would be a false green. CI must supply
+// explicit test-only placeholder values (see .github/workflows/ci.yml).
+if (!ADMIN_PASSCODE || !META_APP_SECRET) {
+  throw new Error(
+    "ADMIN_PASSCODE and META_APP_SECRET must be set to run the automation golden path — refusing to skip."
+  );
+}
 
 function signWebhookBody(rawBody: string): string {
   return "sha256=" + createHmac("sha256", META_APP_SECRET!).update(rawBody).digest("hex");

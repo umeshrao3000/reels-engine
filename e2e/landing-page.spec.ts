@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./support/fixtures";
 
 // Golden path: landing page CTAs. Covers the exact defects the Playwright
 // forensic audit found and the follow-up PR fixed — every service button
@@ -68,17 +68,26 @@ test.describe("landing page — Paste Reel Link golden path", () => {
     await expect(page).toHaveURL(/\/status\//);
   });
 
-  test("an invalid link is rejected without creating a project", async ({ page }) => {
-    await page.goto("/");
+  // Isolated in its own describe so the allowed-error scope below applies
+  // to only this one test, not the whole file.
+  test.describe("invalid link rejection", () => {
+    // The 400 below is the assertion this test exists to make, not a bug —
+    // but Chromium still logs it as a console.error "Failed to load
+    // resource" the moment the fetch resolves non-2xx. Allow exactly that.
+    test.use({ allowedBrowserErrors: [/Failed to load resource.*400/] });
 
-    const linkInput = page.locator('input[type="url"]');
-    await linkInput.fill("not-a-valid-url-at-all");
+    test("an invalid link is rejected without creating a project", async ({ page }) => {
+      await page.goto("/");
 
-    const [response] = await Promise.all([
-      page.waitForResponse((r) => r.url().includes("/api/projects") && r.request().method() === "POST"),
-      page.getByRole("button", { name: "Start Processing" }).click(),
-    ]);
-    expect(response.status()).toBe(400);
-    await expect(page.getByText("That doesn't look like a valid link.")).toBeVisible();
+      const linkInput = page.locator('input[type="url"]');
+      await linkInput.fill("not-a-valid-url-at-all");
+
+      const [response] = await Promise.all([
+        page.waitForResponse((r) => r.url().includes("/api/projects") && r.request().method() === "POST"),
+        page.getByRole("button", { name: "Start Processing" }).click(),
+      ]);
+      expect(response.status()).toBe(400);
+      await expect(page.getByText("That doesn't look like a valid link.")).toBeVisible();
+    });
   });
 });

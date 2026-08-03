@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "node --import dotenv/config --import tsx --test lib/**/__tests__/**/*.test.ts services/**/__tests__/**/*.test.ts",
+    "test": "node --import dotenv/config --import tsx --test lib/**/__tests__/**/*.test.ts services/**/__tests__/**/*.test.ts test/api/**/*.test.ts",
     "test:e2e": "playwright test",
     "postinstall": "prisma generate"
   },
