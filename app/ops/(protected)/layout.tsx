@@ -18,6 +18,9 @@ export default async function ProtectedOpsLayout({
           reels-engine admin
         </span>
         <nav className="flex gap-4 text-sm text-zinc-600 dark:text-zinc-400">
+          <Link href="/ops/dashboard" className="hover:text-zinc-900 dark:hover:text-zinc-100">
+            Dashboard
+          </Link>
           <Link href="/ops/projects" className="hover:text-zinc-900 dark:hover:text-zinc-100">
             Projects
           </Link>
