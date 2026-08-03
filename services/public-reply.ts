@@ -5,6 +5,7 @@ import { sendInstagramPublicReply } from "@/lib/modules/meta/graph-client";
 import { MetaApiError, classifyNetworkFailure } from "@/lib/modules/meta/meta-api-error";
 import { resolveSendFailure } from "./pipeline-transitions";
 import { CLAIM_LEASE_MS } from "./reliability-constants";
+import { runBatchWithDeadline, type BatchOutcome } from "./batch-runner";
 
 // Posts the campaign's publicReplyTemplate as a public reply on a single
 // row's comment, then records the outcome. Acts on DM_SENT rather than
@@ -174,9 +175,13 @@ export async function sendPublicReply(conversionLogId: string): Promise<PublicRe
 /**
  * Batch entry point: every currently-eligible row for this stage, oldest
  * first — freshly DM_SENT rows and due RETRY_PENDING rows alike. Called by
- * the cron route; the caller bounds total runtime across all stages.
+ * the cron route. `deadline` (epoch ms), if given, is checked before every
+ * claim attempt — see services/batch-runner.ts.
  */
-export async function sendPendingPublicReplies(limit = 50): Promise<PublicReplyResult[]> {
+export async function sendPendingPublicReplies(
+  limit = 50,
+  deadline?: number
+): Promise<BatchOutcome<PublicReplyResult>> {
   const now = new Date();
   const candidates = await prisma.conversionLog.findMany({
     where: {
@@ -190,9 +195,5 @@ export async function sendPendingPublicReplies(limit = 50): Promise<PublicReplyR
     select: { id: true },
   });
 
-  const results: PublicReplyResult[] = [];
-  for (const { id } of candidates) {
-    results.push(await sendPublicReply(id));
-  }
-  return results;
+  return runBatchWithDeadline(candidates.map((row) => row.id), deadline, sendPublicReply);
 }

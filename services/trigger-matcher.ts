@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { normalizeCommentText } from "@/utils/normalize-comment";
+import { runBatchWithDeadline, type BatchOutcome } from "./batch-runner";
 
 // Single responsibility (per REELS_ENGINE_V1_BLUEPRINT.md Section 1 & 6):
 // matches a persisted ConversionLog row against the active Campaign(s) for
@@ -134,12 +135,16 @@ export async function matchConversionLog(conversionLogId: string): Promise<Match
 }
 
 /**
- * Batch entry point over every still-PENDING row, oldest first. Not a queue
- * consumer or scheduler in its own right (no polling, no retries) — just
- * matchConversionLog applied to whatever is waiting, for a future Vercel
- * Cron tick (or a manual run) to call.
+ * Batch entry point over every still-PENDING row, oldest first. Called by
+ * the cron route. `deadline` (epoch ms), if given, is checked before each
+ * row — matching has no external call, but the check is applied uniformly
+ * across every batch stage so no stage can quietly run long regardless of
+ * `limit`.
  */
-export async function matchPendingConversionLogs(limit = 50): Promise<MatchResult[]> {
+export async function matchPendingConversionLogs(
+  limit = 50,
+  deadline?: number
+): Promise<BatchOutcome<MatchResult>> {
   const pending = await prisma.conversionLog.findMany({
     where: { status: "PENDING" },
     orderBy: { createdAt: "asc" },
@@ -147,9 +152,5 @@ export async function matchPendingConversionLogs(limit = 50): Promise<MatchResul
     select: { id: true },
   });
 
-  const results: MatchResult[] = [];
-  for (const { id } of pending) {
-    results.push(await matchConversionLog(id));
-  }
-  return results;
+  return runBatchWithDeadline(pending.map((row) => row.id), deadline, matchConversionLog);
 }

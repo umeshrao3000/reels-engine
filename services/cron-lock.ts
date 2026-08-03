@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 
 // Phase A (Automation Reliability): a single-row lock so an overlapping
@@ -8,23 +9,34 @@ import { prisma } from "@/lib/prisma";
 // lock happen on the same underlying connection, so this uses the same
 // atomic conditional-update pattern as every other claim in this
 // milestone instead.
+//
+// Ownership token: release must never clear a lock it doesn't actually
+// hold. Without a token, this sequence is a real bug — worker A acquires,
+// A's lease expires, worker B acquires (the row is legitimately
+// reclaimable once expired), A finally wakes up and calls release: a
+// token-less release would clear B's still-valid lock by id alone, since
+// it has no way to tell "I'm not the current holder." Each acquisition
+// gets a fresh random token; release only succeeds if the row's
+// ownerToken still matches the token the caller was given.
 
 const DEFAULT_LOCK_ID = "automation";
 
+export type AcquireResult = { acquired: true; token: string } | { acquired: false; token: null };
+
 /**
- * Attempts to acquire the lock, returning true only if this call actually
- * claimed it. `ttlMs` bounds how long a lock is honored if its holder
- * never releases it (e.g. a crashed cron invocation) — after that, the
- * next attempt can reclaim it. `lockId` defaults to the one production
- * lock the cron route uses; tests pass a distinct id so concurrent test
- * files never contend over the same row.
+ * Attempts to acquire the lock. `ttlMs` bounds how long a lease is honored
+ * if its holder never releases it (e.g. a crashed cron invocation) —
+ * after that, the next attempt can reclaim it with a new token. `lockId`
+ * defaults to the one production lock the cron route uses; tests pass a
+ * distinct id so concurrent test files never contend over the same row.
  */
 export async function acquireCronLock(
   ttlMs: number,
   now: Date = new Date(),
   lockId: string = DEFAULT_LOCK_ID
-): Promise<boolean> {
+): Promise<AcquireResult> {
   const lockedUntil = new Date(now.getTime() + ttlMs);
+  const token = randomUUID();
 
   // Ensure the row exists, created in an *unlocked* state — the
   // conditional updateMany below is the only step that actually acquires
@@ -33,17 +45,29 @@ export async function acquireCronLock(
   // creating the row.
   await prisma.cronLock.upsert({
     where: { id: lockId },
-    create: { id: lockId, lockedAt: null, lockedUntil: null },
+    create: { id: lockId, lockedAt: null, lockedUntil: null, ownerToken: null },
     update: {},
   });
 
   const claimed = await prisma.cronLock.updateMany({
     where: { id: lockId, OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }] },
-    data: { lockedAt: now, lockedUntil },
+    data: { lockedAt: now, lockedUntil, ownerToken: token },
   });
-  return claimed.count === 1;
+
+  if (claimed.count !== 1) return { acquired: false, token: null };
+  return { acquired: true, token };
 }
 
-export async function releaseCronLock(lockId: string = DEFAULT_LOCK_ID): Promise<void> {
-  await prisma.cronLock.updateMany({ where: { id: lockId }, data: { lockedUntil: null } });
+/**
+ * Releases the lock, but only if `token` matches the row's current
+ * ownerToken — a stale release from an expired-and-reclaimed holder is a
+ * safe no-op, not a way to clear someone else's active lock. Returns
+ * whether this call actually released it.
+ */
+export async function releaseCronLock(token: string, lockId: string = DEFAULT_LOCK_ID): Promise<boolean> {
+  const released = await prisma.cronLock.updateMany({
+    where: { id: lockId, ownerToken: token },
+    data: { lockedUntil: null, ownerToken: null },
+  });
+  return released.count === 1;
 }

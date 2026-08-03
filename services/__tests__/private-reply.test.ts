@@ -13,8 +13,10 @@ import {
   metaTransient5xx,
   metaPermanentBadRequest,
   metaAuthExpiredToken,
+  metaPermissionForbidden,
+  metaConfirmedTokenInvalid403,
 } from "@/lib/test-support/mock-meta-server";
-import { sendPrivateReply } from "../private-reply";
+import { sendPrivateReply, sendPendingPrivateReplies } from "../private-reply";
 import { MAX_RETRY_ATTEMPTS, computeBackoffMs } from "../reliability-constants";
 
 // Phase A (Automation Reliability): sendPrivateReply previously had zero
@@ -246,6 +248,36 @@ describe("sendPrivateReply — retry classification and backoff", () => {
     const account = await prisma.socialAccount.findUniqueOrThrow({ where: { id: socialAccountId } });
     assert.equal(account.status, "TOKEN_EXPIRED");
   });
+
+  it("a 403 permission failure (no token-invalid code) dead-letters; the account stays ACTIVE", async () => {
+    mockMeta.setHandler(() => metaPermissionForbidden);
+    const log = await createTestConversionLog({ campaignId, status: "MATCHED" });
+
+    const result = await sendPrivateReply(log.id);
+    assert.equal(result.outcome, "dead_letter");
+
+    const row = await prisma.conversionLog.findUniqueOrThrow({ where: { id: log.id } });
+    assert.equal(row.status, "DEAD_LETTER");
+    assert.equal(row.lastFailureClassification, "PERMANENT");
+
+    const account = await prisma.socialAccount.findUniqueOrThrow({ where: { id: socialAccountId } });
+    assert.equal(account.status, "ACTIVE", "a permission rejection must never be mistaken for a bad token");
+  });
+
+  it("a 403 WITH a confirmed token-invalid Meta code blocks the row and flips the account to TOKEN_EXPIRED", async () => {
+    mockMeta.setHandler(() => metaConfirmedTokenInvalid403);
+    const log = await createTestConversionLog({ campaignId, status: "MATCHED" });
+
+    const result = await sendPrivateReply(log.id);
+    assert.equal(result.outcome, "account_blocked");
+
+    const row = await prisma.conversionLog.findUniqueOrThrow({ where: { id: log.id } });
+    assert.equal(row.status, "ACCOUNT_BLOCKED");
+    assert.equal(row.lastFailureClassification, "AUTH");
+
+    const account = await prisma.socialAccount.findUniqueOrThrow({ where: { id: socialAccountId } });
+    assert.equal(account.status, "TOKEN_EXPIRED");
+  });
 });
 
 describe("sendPrivateReply — account enforcement", () => {
@@ -325,5 +357,39 @@ describe("sendPrivateReply — data-integrity edge cases", () => {
     const log = await createTestConversionLog({ campaignId, status: "PENDING" });
     const result = await sendPrivateReply(log.id);
     assert.equal(result.outcome, "not_claimed");
+  });
+});
+
+describe("sendPendingPrivateReplies — per-item deadline enforcement", () => {
+  it("stops claiming new rows once the deadline passes, against real (slow, mocked) Meta calls", async () => {
+    const logs = await Promise.all([
+      createTestConversionLog({ campaignId, status: "MATCHED" }),
+      createTestConversionLog({ campaignId, status: "MATCHED" }),
+      createTestConversionLog({ campaignId, status: "MATCHED" }),
+    ]);
+
+    let requestCount = 0;
+    mockMeta.setHandler(() => {
+      requestCount += 1;
+      return { status: 200, body: { recipient_id: "r", message_id: "m" }, delayMs: 250 };
+    });
+
+    // Deadline window is short enough that only the first (already
+    // in-flight) item can complete before it passes — proves the batch
+    // stops *starting* new claims, it doesn't need to abort in-flight work.
+    const deadline = Date.now() + 80;
+    const { results, skippedByDeadline } = await sendPendingPrivateReplies(10, deadline);
+
+    assert.ok(results.length < logs.length, `expected fewer than ${logs.length} rows processed, got ${results.length}`);
+    assert.equal(requestCount, results.length, "no Meta call should have been made for a skipped row");
+    assert.ok(skippedByDeadline > 0);
+    assert.equal(skippedByDeadline, logs.length - results.length);
+
+    // The skipped rows are untouched — still MATCHED, eligible for the
+    // next tick, not stuck or misclassified.
+    const remaining = await prisma.conversionLog.findMany({
+      where: { id: { in: logs.map((l) => l.id) }, status: "MATCHED" },
+    });
+    assert.equal(remaining.length, skippedByDeadline);
   });
 });

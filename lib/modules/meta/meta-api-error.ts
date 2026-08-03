@@ -41,6 +41,14 @@ export class MetaApiError extends Error {
 // expired, or was revoked" signal, independent of HTTP status (Meta
 // sometimes returns these with a 400, not just 401). See:
 // https://developers.facebook.com/docs/graph-api/guides/error-handling/
+//
+// Not used for 403 in general: Meta also returns 403 for permission/policy
+// rejections that have nothing to do with the token being invalid (e.g.
+// missing a required permission, messaging-policy violations). Treating
+// every 403 as AUTH would wrongly flip a healthy, still-valid-token
+// account to TOKEN_EXPIRED over an unrelated permission problem — only a
+// confirmed token-invalid signal (401, or one of these codes regardless of
+// status) is AUTH.
 const AUTH_ERROR_CODES = new Set([190]);
 
 type MetaErrorBody = {
@@ -72,11 +80,16 @@ export function classifyHttpFailure(status: number, rawBody: string): MetaApiErr
   const message = parsed?.error?.message || `Meta API request failed (${status}): ${rawBody.slice(0, 500)}`;
 
   let classification: MetaErrorClassification;
-  if (status === 401 || status === 403 || (code !== undefined && AUTH_ERROR_CODES.has(code))) {
+  if (status === 401 || (code !== undefined && AUTH_ERROR_CODES.has(code))) {
+    // Confirmed token failure: either the standard "unauthorized" status,
+    // or a structured token-invalid/expired code Meta returns regardless
+    // of status (including on a 403).
     classification = "AUTH";
   } else if (status === 429 || status >= 500) {
     classification = "TRANSIENT";
   } else {
+    // Includes a 403 without a token-invalid code — a permission or
+    // policy rejection, not a token problem. Also 400/404/etc.
     classification = "PERMANENT";
   }
 

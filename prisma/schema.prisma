@@ -350,6 +350,12 @@ model CronLock {
   id          String    @id
   lockedAt    DateTime?
   lockedUntil DateTime?
+  // Random per-acquisition token, required to release. Without this, a
+  // holder whose lease already expired (and was reclaimed by a new
+  // holder) could still call release and clear the *new* holder's lock —
+  // release must prove it's releasing the lock it actually acquired, not
+  // just the lock with this id.
+  ownerToken  String?
 
   @@map("cron_locks")
 }

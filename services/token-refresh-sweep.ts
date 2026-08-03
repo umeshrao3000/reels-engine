@@ -16,6 +16,7 @@ export type TokenRefreshSummary = {
   markedExpired: number;
   skippedTransient: number;
   skippedError: number;
+  skippedByDeadline: number;
 };
 
 /**
@@ -24,8 +25,14 @@ export type TokenRefreshSummary = {
  * are excluded by the query itself (never touched), and a confirmed
  * AUTH failure here is what actually produces a TOKEN_EXPIRED account, not
  * a guess based on tokenExpiresAt alone.
+ *
+ * `deadline` (epoch ms), if given, is checked before every account — same
+ * per-item enforcement as the ConversionLog batch stages (see
+ * services/batch-runner.ts), applied here by hand since this loop's body
+ * doesn't fit that helper's shape (no per-item result array; a shared
+ * summary object instead).
  */
-export async function refreshExpiringTokens(now: Date = new Date()): Promise<TokenRefreshSummary> {
+export async function refreshExpiringTokens(now: Date = new Date(), deadline?: number): Promise<TokenRefreshSummary> {
   const soon = new Date(now.getTime() + TOKEN_REFRESH_WINDOW_MS);
   const accounts = await prisma.socialAccount.findMany({
     where: { status: "ACTIVE", isConnected: true, tokenExpiresAt: { not: null, lte: soon } },
@@ -37,9 +44,15 @@ export async function refreshExpiringTokens(now: Date = new Date()): Promise<Tok
     markedExpired: 0,
     skippedTransient: 0,
     skippedError: 0,
+    skippedByDeadline: 0,
   };
 
   for (const account of accounts) {
+    if (deadline !== undefined && Date.now() >= deadline) {
+      summary.skippedByDeadline += 1;
+      continue;
+    }
+
     let currentToken: string;
     try {
       currentToken = decrypt(account.pageAccessToken);

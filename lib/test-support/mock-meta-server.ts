@@ -8,7 +8,10 @@ import type { AddressInfo } from "node:net";
 // purpose. No real network call is ever made by these tests.
 
 export type MockMetaResponse =
-  | { status: number; body: unknown }
+  // `delayMs`, if set, holds the response for that long before writing it
+  // — used to simulate slow Meta calls in per-item deadline tests, without
+  // relying on graph-client.ts's real 15s request timeout.
+  | { status: number; body: unknown; delayMs?: number }
   // Destroys the connection after the request is received but before any
   // response is written — the fastest reliable way to make `fetch()`
   // itself throw (an ECONNRESET-style failure), simulating "the request
@@ -32,8 +35,12 @@ export class MockMetaServer {
         req.socket.destroy();
         return;
       }
-      res.writeHead(result.status, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(result.body));
+      const respond = () => {
+        res.writeHead(result.status, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result.body));
+      };
+      if (result.delayMs) setTimeout(respond, result.delayMs);
+      else respond();
     });
   }
 
@@ -82,4 +89,18 @@ export const metaPermanentBadRequest: MockMetaResponse = {
 export const metaAuthExpiredToken: MockMetaResponse = {
   status: 401,
   body: { error: { message: "Error validating access token", code: 190, error_subcode: 463 } },
+};
+
+// A 403 that is NOT a token problem — a permission/policy rejection. Must
+// classify PERMANENT, not AUTH (see meta-api-error.ts).
+export const metaPermissionForbidden: MockMetaResponse = {
+  status: 403,
+  body: { error: { message: "Permission denied for this action", code: 200 } },
+};
+
+// A 403 that Meta uses to signal a confirmed invalid/expired token — the
+// code (190), not the status, is what makes this AUTH.
+export const metaConfirmedTokenInvalid403: MockMetaResponse = {
+  status: 403,
+  body: { error: { message: "Error validating access token", code: 190, error_subcode: 460 } },
 };

@@ -5,6 +5,7 @@ import { sendInstagramPrivateReply } from "@/lib/modules/meta/graph-client";
 import { MetaApiError, classifyNetworkFailure } from "@/lib/modules/meta/meta-api-error";
 import { resolveSendFailure } from "./pipeline-transitions";
 import { CLAIM_LEASE_MS } from "./reliability-constants";
+import { runBatchWithDeadline, type BatchOutcome } from "./batch-runner";
 
 // Sends the campaign's dmTemplate as a private reply to a single row's
 // comment, then records the outcome. Does not match keywords
@@ -189,8 +190,14 @@ export async function sendPrivateReply(conversionLogId: string): Promise<Private
  * just the candidate list). Called by the cron route
  * (app/api/cron/automation/route.ts); the caller is responsible for
  * bounding total runtime across all stages.
+ * `deadline` (epoch ms), if given, is checked before every claim attempt —
+ * see services/batch-runner.ts — so this can never run 25 sequential
+ * 15-second Meta timeouts on one stale check from before the batch began.
  */
-export async function sendPendingPrivateReplies(limit = 50): Promise<PrivateReplyResult[]> {
+export async function sendPendingPrivateReplies(
+  limit = 50,
+  deadline?: number
+): Promise<BatchOutcome<PrivateReplyResult>> {
   const now = new Date();
   const candidates = await prisma.conversionLog.findMany({
     where: {
@@ -204,9 +211,5 @@ export async function sendPendingPrivateReplies(limit = 50): Promise<PrivateRepl
     select: { id: true },
   });
 
-  const results: PrivateReplyResult[] = [];
-  for (const { id } of candidates) {
-    results.push(await sendPrivateReply(id));
-  }
-  return results;
+  return runBatchWithDeadline(candidates.map((row) => row.id), deadline, sendPrivateReply);
 }

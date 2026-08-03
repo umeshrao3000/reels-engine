@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { runBatchWithDeadline, type BatchOutcome } from "./batch-runner";
 
 // Single responsibility (per REELS_ENGINE_V1_BLUEPRINT.md Section 1 & 6):
 // closes the DeliveryStatus pipeline's last transition
@@ -47,9 +48,13 @@ export async function finalizeConversion(conversionLogId: string): Promise<Final
 
 /**
  * Batch entry point over every currently PUBLIC_REPLIED row, oldest first.
- * Called by the cron route.
+ * Called by the cron route. `deadline` (epoch ms), if given, is checked
+ * before every item — see services/batch-runner.ts.
  */
-export async function finalizePendingConversions(limit = 50): Promise<FinalizeResult[]> {
+export async function finalizePendingConversions(
+  limit = 50,
+  deadline?: number
+): Promise<BatchOutcome<FinalizeResult>> {
   const pending = await prisma.conversionLog.findMany({
     where: { status: "PUBLIC_REPLIED" },
     orderBy: { createdAt: "asc" },
@@ -57,9 +62,5 @@ export async function finalizePendingConversions(limit = 50): Promise<FinalizeRe
     select: { id: true },
   });
 
-  const results: FinalizeResult[] = [];
-  for (const { id } of pending) {
-    results.push(await finalizeConversion(id));
-  }
-  return results;
+  return runBatchWithDeadline(pending.map((row) => row.id), deadline, finalizeConversion);
 }

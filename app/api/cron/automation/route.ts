@@ -8,6 +8,7 @@ import { finalizePendingConversions } from "@/services/conversion-finalizer";
 import { recoverStaleClaims, resumeAccountBlockedRows } from "@/services/recovery";
 import { refreshExpiringTokens } from "@/services/token-refresh-sweep";
 import { acquireCronLock, releaseCronLock } from "@/services/cron-lock";
+import { CRON_LOCK_TTL_MS, CRON_TIME_BUDGET_MS, CRON_BATCH_LIMIT } from "@/services/reliability-constants";
 
 // Phase A (Automation Reliability): the single scheduled entry point that
 // drives every batch/recovery function the pipeline services expose —
@@ -44,10 +45,6 @@ import { acquireCronLock, releaseCronLock } from "@/services/cron-lock";
 
 export const dynamic = "force-dynamic";
 
-const CRON_LOCK_TTL_MS = 5 * 60 * 1000; // 5 minutes — generous vs. expected run time
-const TIME_BUDGET_MS = 45 * 1000; // stay well under typical serverless function limits
-const BATCH_LIMIT = 25;
-
 function isAuthorized(request: Request): boolean {
   const secret = process.env.CRON_SECRET;
   if (!secret) return false; // fail closed: unconfigured means no request is authorized
@@ -77,9 +74,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const deadline = Date.now() + TIME_BUDGET_MS;
-  const acquired = await acquireCronLock(CRON_LOCK_TTL_MS);
-  if (!acquired) {
+  // Shared deadline, threaded into every batch call below — each one
+  // checks it before starting its *next* item, not just once before the
+  // whole batch. Without that, a single stale "start of batch" check
+  // can't stop e.g. 25 sequential 15s-timeout Meta requests from running
+  // one after another once the batch has already begun.
+  const deadline = Date.now() + CRON_TIME_BUDGET_MS;
+  const lock = await acquireCronLock(CRON_LOCK_TTL_MS);
+  if (!lock.acquired) {
     logger.info("cron.automation.skipped_overlap");
     return NextResponse.json({ ok: true, skipped: true, reason: "already running" });
   }
@@ -92,37 +94,26 @@ export async function GET(request: Request) {
     summary.staleClaimsRecovered = await recoverStaleClaims();
     summary.accountBlockedResumed = await resumeAccountBlockedRows();
 
-    if (Date.now() < deadline) {
-      summary.matched = countOutcomes(await matchPendingConversionLogs(BATCH_LIMIT));
-    } else {
-      summary.matched = "skipped_deadline";
-    }
+    const matched = await matchPendingConversionLogs(CRON_BATCH_LIMIT, deadline);
+    summary.matched = countOutcomes(matched.results);
+    summary.matchedSkippedByDeadline = matched.skippedByDeadline;
 
-    if (Date.now() < deadline) {
-      // Includes both freshly-MATCHED rows and due RETRY_PENDING rows for
-      // this stage — see module doc comment above.
-      summary.privateReply = countOutcomes(await sendPendingPrivateReplies(BATCH_LIMIT));
-    } else {
-      summary.privateReply = "skipped_deadline";
-    }
+    // Includes both freshly-MATCHED rows and due RETRY_PENDING rows for
+    // this stage — see module doc comment above.
+    const privateReply = await sendPendingPrivateReplies(CRON_BATCH_LIMIT, deadline);
+    summary.privateReply = countOutcomes(privateReply.results);
+    summary.privateReplySkippedByDeadline = privateReply.skippedByDeadline;
 
-    if (Date.now() < deadline) {
-      summary.publicReply = countOutcomes(await sendPendingPublicReplies(BATCH_LIMIT));
-    } else {
-      summary.publicReply = "skipped_deadline";
-    }
+    const publicReply = await sendPendingPublicReplies(CRON_BATCH_LIMIT, deadline);
+    summary.publicReply = countOutcomes(publicReply.results);
+    summary.publicReplySkippedByDeadline = publicReply.skippedByDeadline;
 
-    if (Date.now() < deadline) {
-      summary.finalized = countOutcomes(await finalizePendingConversions(BATCH_LIMIT));
-    } else {
-      summary.finalized = "skipped_deadline";
-    }
+    const finalized = await finalizePendingConversions(CRON_BATCH_LIMIT, deadline);
+    summary.finalized = countOutcomes(finalized.results);
+    summary.finalizedSkippedByDeadline = finalized.skippedByDeadline;
 
-    if (Date.now() < deadline) {
-      summary.tokenRefresh = await refreshExpiringTokens();
-    } else {
-      summary.tokenRefresh = "skipped_deadline";
-    }
+    const tokenRefresh = await refreshExpiringTokens(new Date(), deadline);
+    summary.tokenRefresh = tokenRefresh;
 
     logger.info("cron.automation.completed", summary);
     return NextResponse.json({ ok: true, ...summary });
@@ -133,6 +124,6 @@ export async function GET(request: Request) {
     });
     return NextResponse.json({ ok: false, error: "Internal error during automation cron run." }, { status: 500 });
   } finally {
-    await releaseCronLock();
+    await releaseCronLock(lock.token);
   }
 }
