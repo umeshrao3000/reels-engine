@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getStorageService } from "@/lib/modules/storage";
+import { getStorageProvider } from "@/lib/modules/storage";
 
 // Customer-facing download, scoped to one project via its unguessable
 // shareToken. Only ever serves PROCESSED uploads — a customer can never
@@ -20,7 +20,7 @@ export async function GET(
     return new Response("Not found", { status: 404 });
   }
 
-  const storage = getStorageService();
+  const storage = getStorageProvider();
   if (!(await storage.exists(upload.location))) {
     return new Response("Not found", { status: 404 });
   }

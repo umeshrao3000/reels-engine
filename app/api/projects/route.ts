@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getStorageService } from "@/lib/modules/storage";
+import { getStorageProvider } from "@/lib/modules/storage";
 import { classifyUrlSource } from "@/lib/modules/uploads/classify-source";
 import { checkRateLimit, getClientIp } from "@/lib/modules/security/rate-limit";
 import { REEL_MAKEOVER_AMOUNT_PAISE } from "@/lib/modules/payments/upi";
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await uploadedFile.arrayBuffer());
-    const storage = getStorageService();
+    const storage = getStorageProvider();
     const key = `projects/${randomUUID()}/${uploadedFile.name}`;
     const stored = await storage.put(key, buffer, uploadedFile.type || undefined);
 

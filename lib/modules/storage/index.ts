@@ -1,17 +1,19 @@
 import path from "path";
-import type { StorageService } from "./types";
-import { LocalStorageAdapter } from "./local-storage-adapter";
+import type { StorageProvider } from "./types";
+import { LocalStorageProvider } from "./local-storage-provider";
+import { R2StorageProvider } from "./r2-storage-provider";
 
-export type { StorageService, StoredFileRef } from "./types";
+export type { StorageProvider, StoredFileRef } from "./types";
 
-let instance: StorageService | undefined;
+let instance: StorageProvider | undefined;
 
 /**
- * Returns the configured Storage Service. Driver is chosen by STORAGE_DRIVER;
- * "local" is the only driver in V1. Adding a production driver (S3-compatible,
- * NAS, etc.) means adding a case here — callers never change.
+ * Returns the configured Storage Provider. Driver is chosen by STORAGE_DRIVER
+ * ("local" by default). Adding a new provider means adding one case here —
+ * callers never change. "r2" selects a placeholder that fails clearly on
+ * every call — R2 is not implemented or connected yet, see docs/STORAGE.md.
  */
-export function getStorageService(): StorageService {
+export function getStorageProvider(): StorageProvider {
   if (instance) return instance;
 
   const driver = process.env.STORAGE_DRIVER ?? "local";
@@ -19,7 +21,11 @@ export function getStorageService(): StorageService {
   switch (driver) {
     case "local": {
       const root = path.resolve(/* turbopackIgnore: true */ process.cwd(), process.env.STORAGE_ROOT ?? ".storage");
-      instance = new LocalStorageAdapter(root);
+      instance = new LocalStorageProvider(root);
+      return instance;
+    }
+    case "r2": {
+      instance = new R2StorageProvider();
       return instance;
     }
     default:
