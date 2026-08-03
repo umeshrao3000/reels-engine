@@ -7,19 +7,11 @@ export type { StorageProvider, StoredFileRef } from "./types";
 
 let instance: StorageProvider | undefined;
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required env var "${name}" for STORAGE_DRIVER=r2`);
-  }
-  return value;
-}
-
 /**
  * Returns the configured Storage Provider. Driver is chosen by STORAGE_DRIVER
  * ("local" by default). Adding a new provider means adding one case here —
- * callers never change. "r2" is wired up but not yet in production use: no
- * bucket, credentials, or API keys exist for it — see docs/STORAGE.md.
+ * callers never change. "r2" selects a placeholder that fails clearly on
+ * every call — R2 is not implemented or connected yet, see docs/STORAGE.md.
  */
 export function getStorageProvider(): StorageProvider {
   if (instance) return instance;
@@ -33,12 +25,7 @@ export function getStorageProvider(): StorageProvider {
       return instance;
     }
     case "r2": {
-      instance = new R2StorageProvider({
-        accountId: requireEnv("R2_ACCOUNT_ID"),
-        accessKeyId: requireEnv("R2_ACCESS_KEY_ID"),
-        secretAccessKey: requireEnv("R2_SECRET_ACCESS_KEY"),
-        bucket: requireEnv("R2_BUCKET_NAME"),
-      });
+      instance = new R2StorageProvider();
       return instance;
     }
     default:
