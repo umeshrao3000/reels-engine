@@ -94,6 +94,9 @@ export function UploadForm() {
 
   return (
     <div className="flex w-full max-w-md flex-col gap-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        Upload Raw Reel
+      </p>
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -152,6 +155,9 @@ export function UploadForm() {
           </div>
 
           <div className="flex flex-col gap-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              Paste Reel Link
+            </p>
             <input
               type="url"
               inputMode="url"
