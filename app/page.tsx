@@ -44,8 +44,8 @@ export default function Home() {
             <UploadForm />
 
             <div className="grid w-full max-w-xs grid-cols-2 gap-3">
-              <ServiceButton status="future" label="Keywords" detail="Coming soon" />
-              <ServiceButton status="future" label="Automation" detail="Coming soon" />
+              <ServiceButton status="active" href="/ops/campaigns" label="Keywords" detail="Admin sign-in" />
+              <ServiceButton status="active" href="/ops/social-accounts" label="Automation" detail="Admin sign-in" />
               <ServiceButton status="active" href="/ops/monitoring" label="Monitoring" detail="Admin sign-in" />
             </div>
           </div>
