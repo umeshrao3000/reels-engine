@@ -27,6 +27,15 @@ import { acquireCronLock, releaseCronLock } from "@/services/cron-lock";
 //     there is no separate "retry-due" entry point to call.
 //  4. Token-refresh sweep    — independent of ConversionLog state.
 //
+// vercel.json currently schedules this once daily (Vercel's Hobby plan
+// rejects any cron more frequent than daily — a tighter interval was
+// attempted and rejected at deploy time). Correctness doesn't depend on
+// cadence — retryCount/nextRetryAt/claim leases all work regardless of how
+// often this fires — but recovery latency does: on Hobby, a transient
+// failure or a reconnect isn't resumed until the next day's tick, not
+// within minutes. Tighten to every few minutes once on a plan that allows
+// it.
+//
 // Protected by a shared secret (fail-closed: unset CRON_SECRET means
 // nobody is authorized, not "anyone is") and a DB-backed lock so an
 // overlapping invocation (a slow run still active when the next scheduled
