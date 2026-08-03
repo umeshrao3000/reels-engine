@@ -38,9 +38,10 @@ jobs:
       STORAGE_ROOT: .storage
       ADMIN_PASSCODE: ci-placeholder-passcode
       ADMIN_SESSION_SECRET: ci-placeholder-session-secret
-      # playwright is a devDependency but nothing in CI drives a browser yet —
-      # skip the ~300MB Chromium download until something actually needs it.
-      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      META_APP_SECRET: ci-placeholder-meta-app-secret
+      META_WEBHOOK_VERIFY_TOKEN: ci-placeholder-verify-token
+      OAUTH_STATE_SECRET: ci-placeholder-oauth-state-secret
+      TOKEN_ENCRYPTION_KEY: FYzvM5BXw9O6F6CoR1n+A5DNL5RSIAB0MWMAax3hbjU=
 
     steps:
       - name: Checkout
@@ -79,11 +80,25 @@ jobs:
       - name: Build
         run: npm run build
 
-      # No test suite yet — this stays green (npm skips) until one exists,
-      # then starts enforcing automatically. Do not replace with a fake
-      # always-pass script.
-      - name: Unit tests (when present)
-        run: npm test --if-present
+      - name: Unit and integration tests
+        run: npm test
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      # Runs the golden-path browser suite against the production build from
+      # the Build step above (playwright.config.ts starts it via `npm run
+      # start`) and the same real Postgres instance used by the tests above.
+      - name: E2E tests (Playwright)
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
 
       # Hard gate: any critical-severity advisory fails the build.
       - name: Security audit (critical)

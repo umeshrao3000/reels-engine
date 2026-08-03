@@ -12,7 +12,7 @@ Every item maps to the MR milestone that closes it. `[ ]` = not started (accurat
 ## Product
 
 - [ ] 🔴 Landing page describes and sells Instagram comment automation as the primary product, not the legacy Reel Makeover framing — *MR-6*
-- [ ] 🟡 Legacy Reel Makeover product remains functional and unbroken through launch — *baseline, verify continuously across MR-1–MR-9*
+- [ ] 🟡 Legacy Reel Makeover product remains functional and unbroken through launch — *baseline, verify continuously across MR-1–MR-9*. **MR-1 evidence:** `e2e/landing-page.spec.ts` now gives this continuous automated regression coverage (upload → pay page, link paste → status page, invalid-link rejection), required in CI on every PR.
 - [ ] 🟢 Legacy Reel Makeover product's long-term product status (sunset vs. retain) decided — *post-beta, per `docs/PRODUCT_BOUNDARY_DECISION.md §2`*
 
 ## Customer onboarding
@@ -20,7 +20,7 @@ Every item maps to the MR milestone that closes it. `[ ]` = not started (accurat
 - [ ] 🔴 A new customer can sign up without staff intervention — *MR-5*
 - [ ] 🔴 A new customer can connect their own real Instagram account via OAuth — *MR-5*
 - [ ] 🔴 A new customer can create a campaign and keywords and see it go live — *MR-5*
-- [ ] 🟡 Onboarding golden path covered by an automated Playwright test — *MR-1, MR-5*
+- [ ] 🟡 Onboarding golden path covered by an automated Playwright test — *MR-1, MR-5*. **MR-1 evidence:** `e2e/automation-golden-path.spec.ts` covers the admin-side path (login → campaign create → keyword add/disable → real signed-webhook matching → Monitoring page verification) and `e2e/landing-page.spec.ts` covers the visitor-side path, both required in CI. Not checked yet — the self-serve *customer* signup golden path this item is jointly scoped for doesn't exist until MR-5.
 
 ## Authentication
 
@@ -46,7 +46,7 @@ Every item maps to the MR milestone that closes it. `[ ]` = not started (accurat
 ## Automation reliability
 
 - [ ] 🔴 Concurrent pipeline execution cannot produce a duplicate DM or public reply — *MR-2*
-- [ ] 🔴 Concurrent-execution regression test exists and passes in CI — *MR-1, MR-2*
+- [ ] 🔴 Concurrent-execution regression test exists and passes in CI — *MR-1, MR-2*. **MR-1 evidence:** CI now runs two required, non-skippable jobs on every PR — unit/integration (`npm test`, 78 tests: webhook signature verification, trigger matching incl. word-boundary matching, admin sessions, OAuth state, keyword normalize/service) and Playwright (`npx playwright test`, 8 tests). This is the regression foundation the concurrency test itself will run on. Not checked — the concurrency test requires MR-2's locking implementation first, explicitly out of MR-1 scope.
 - [ ] 🟡 Pipeline behavior re-verified against real webhook traffic in staging — *MR-9*
 
 ## Duplicate prevention
