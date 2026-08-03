@@ -12,6 +12,7 @@ export function SystemHealthSection({
   tokenWarnings,
   lastWebhookReceivedAt,
   lastAutomationExecutedAt,
+  recoveryCounts,
 }: {
   oauthConnected: boolean;
   webhookConfigured: boolean;
@@ -19,6 +20,12 @@ export function SystemHealthSection({
   tokenWarnings: { accountLabel: string; level: string; message: string }[];
   lastWebhookReceivedAt: Date | null;
   lastAutomationExecutedAt: Date | null;
+  recoveryCounts: {
+    retryPending: number;
+    accountBlocked: number;
+    deliveryUncertain: number;
+    deadLetter: number;
+  };
 }) {
   return (
     <section className="flex flex-col gap-3">
@@ -42,6 +49,16 @@ export function SystemHealthSection({
       </dl>
 
       <div className="flex flex-col gap-1">
+        <h3 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">Automation Recovery</h3>
+        <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+          <RecoveryStat label="Retry pending" count={recoveryCounts.retryPending} level="warning" />
+          <RecoveryStat label="Account blocked" count={recoveryCounts.accountBlocked} level="warning" />
+          <RecoveryStat label="Needs review" count={recoveryCounts.deliveryUncertain} level="expired" />
+          <RecoveryStat label="Dead letter" count={recoveryCounts.deadLetter} level="expired" />
+        </dl>
+      </div>
+
+      <div className="flex flex-col gap-1">
         <h3 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">Token Expiry</h3>
         {tokenWarnings.length === 0 ? (
           <p className="text-sm text-zinc-500 dark:text-zinc-400">No connected accounts.</p>
@@ -59,6 +76,15 @@ export function SystemHealthSection({
         )}
       </div>
     </section>
+  );
+}
+
+function RecoveryStat({ label, count, level }: { label: string; count: number; level: "warning" | "expired" }) {
+  return (
+    <div className="flex flex-col gap-0.5 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800">
+      <dt className="text-xs text-zinc-500 dark:text-zinc-400">{label}</dt>
+      <dd className={count === 0 ? "text-zinc-700 dark:text-zinc-300" : LEVEL_CLASS[level]}>{count}</dd>
+    </div>
   );
 }
 

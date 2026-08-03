@@ -53,6 +53,18 @@ function findMatchedKeyword(normalizedText: string, keywords: string[]): string 
  * Matches a single persisted ConversionLog row. Idempotent: a row not still
  * at PENDING is assumed already processed (matched or skipped by an earlier
  * run) and is left untouched rather than re-matched.
+ *
+ * Phase A (Automation Reliability): the final status write is a
+ * conditional `updateMany` guarded on `status: "PENDING"`, not a plain
+ * `update`. Matching itself has no external side effect (Lead upsert is
+ * already idempotent), so two concurrent calls computing the same result
+ * twice is harmless — what must not happen is both calls *reporting*
+ * "matched" and each triggering their own downstream private-reply send.
+ * The conditional update ensures only the caller that actually flips
+ * PENDING -> MATCHED/SKIPPED gets that outcome; a second, losing caller
+ * sees `count === 0` and reports `already_processed` instead. No claim/
+ * lease state is needed here — unlike private-reply.ts/public-reply.ts,
+ * there's no external call in flight to protect against a crash mid-way.
  */
 export async function matchConversionLog(conversionLogId: string): Promise<MatchResult> {
   const log = await prisma.conversionLog.findUniqueOrThrow({ where: { id: conversionLogId } });
@@ -90,8 +102,8 @@ export async function matchConversionLog(conversionLogId: string): Promise<Match
         })
       : null;
 
-    await prisma.conversionLog.update({
-      where: { id: log.id },
+    const claimed = await prisma.conversionLog.updateMany({
+      where: { id: log.id, status: "PENDING" },
       data: {
         campaignId: campaign.id,
         leadId: lead?.id,
@@ -99,16 +111,24 @@ export async function matchConversionLog(conversionLogId: string): Promise<Match
         status: "MATCHED",
       },
     });
+    if (claimed.count === 0) {
+      logger.info("trigger.match.already_processed", { conversionLogId });
+      return { conversionLogId, outcome: "already_processed" };
+    }
 
     logger.info("trigger.match.matched", { conversionLogId, campaignId: campaign.id, matchedKeyword });
     return { conversionLogId, outcome: "matched", campaignId: campaign.id, matchedKeyword, leadId: lead?.id };
   }
 
   const outcome: MatchOutcome = campaigns.length === 0 ? "skipped_no_campaign" : "skipped_no_keyword";
-  await prisma.conversionLog.update({
-    where: { id: log.id },
+  const claimed = await prisma.conversionLog.updateMany({
+    where: { id: log.id, status: "PENDING" },
     data: { status: "SKIPPED" },
   });
+  if (claimed.count === 0) {
+    logger.info("trigger.match.already_processed", { conversionLogId });
+    return { conversionLogId, outcome: "already_processed" };
+  }
   logger.info("trigger.match.skipped", { conversionLogId, reason: outcome });
   return { conversionLogId, outcome };
 }

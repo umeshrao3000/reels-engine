@@ -1,21 +1,33 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { encrypt } from "@/lib/crypto";
+import type { DeliveryStatus, PipelineStage } from "@prisma/client";
 
 // Shared fixture helpers for DB-backed tests (services/trigger-matcher,
-// lib/modules/keywords/keyword-service). Every fixture uses a randomUUID
-// suffix so concurrent test files never collide on unique constraints
-// (SocialAccount.instagramBusinessId, ConversionLog.commentId, etc).
+// lib/modules/keywords/keyword-service, Phase A's reliability suites).
+// Every fixture uses a randomUUID suffix so concurrent test files never
+// collide on unique constraints (SocialAccount.instagramBusinessId,
+// ConversionLog.commentId, etc).
 
 export async function createTestSocialAccount(overrides: Partial<{
   status: "ACTIVE" | "DISCONNECTED" | "TOKEN_EXPIRED";
+  isConnected: boolean;
+  // Raw (unencrypted) token — the fixture encrypts it before storage, same
+  // as the real OAuth callback does. Defaults to a random value so
+  // decrypt() in the reply services succeeds against a real ciphertext,
+  // not a plain string.
+  pageAccessToken: string;
+  tokenExpiresAt: Date | null;
 }> = {}) {
   const suffix = randomUUID();
   return prisma.socialAccount.create({
     data: {
       instagramBusinessId: `test-ig-biz-${suffix}`,
-      pageAccessToken: `test-token-${suffix}`,
+      pageAccessToken: encrypt(overrides.pageAccessToken ?? `test-plaintext-token-${suffix}`),
       instagramUsername: `test_account_${suffix.slice(0, 8)}`,
       status: overrides.status ?? "ACTIVE",
+      isConnected: overrides.isConnected ?? true,
+      tokenExpiresAt: overrides.tokenExpiresAt,
     },
   });
 }
@@ -47,7 +59,15 @@ export async function createTestConversionLog(overrides: Partial<{
   commentText: string;
   instagramUserId: string;
   mediaId: string;
-  status: "PENDING" | "MATCHED" | "DM_SENT" | "PUBLIC_REPLIED" | "SUCCESS" | "FAILED" | "SKIPPED";
+  status: DeliveryStatus;
+  campaignId: string;
+  leadId: string;
+  retryCount: number;
+  nextRetryAt: Date | null;
+  claimExpiresAt: Date | null;
+  pendingStage: PipelineStage | null;
+  dmSentAt: Date | null;
+  publicRepliedAt: Date | null;
 }> = {}) {
   const suffix = randomUUID();
   return prisma.conversionLog.create({
@@ -56,6 +76,14 @@ export async function createTestConversionLog(overrides: Partial<{
       commentText: overrides.commentText ?? "test comment",
       instagramUserId: overrides.instagramUserId ?? `test-ig-user-${suffix}`,
       status: overrides.status ?? "PENDING",
+      campaignId: overrides.campaignId,
+      leadId: overrides.leadId,
+      retryCount: overrides.retryCount,
+      nextRetryAt: overrides.nextRetryAt,
+      claimExpiresAt: overrides.claimExpiresAt,
+      pendingStage: overrides.pendingStage,
+      dmSentAt: overrides.dmSentAt,
+      publicRepliedAt: overrides.publicRepliedAt,
       rawPayload: overrides.mediaId
         ? { media: { id: overrides.mediaId }, from: { id: overrides.instagramUserId ?? `test-ig-user-${suffix}`, username: "test_user" } }
         : undefined,

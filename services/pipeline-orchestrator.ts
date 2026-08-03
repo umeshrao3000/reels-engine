@@ -16,9 +16,17 @@ import { finalizeConversion } from "@/services/conversion-finalizer";
 export type PipelineOutcome =
   | "success"
   | "no_match"
-  | "private_reply_failed"
-  | "public_reply_failed"
-  | "already_processed";
+  | "already_processed"
+  // Phase A: a stage stopped without erroring — these are legitimate
+  // waypoints (a scheduled retry, a resumable account block, an ambiguous
+  // outcome pending manual review, or a genuine dead letter), not
+  // generic "failed" states. The cron route's retry/recovery sweeps are
+  // what move a row past any of these; runPipeline itself only ever runs
+  // a row's *first* pass (from the webhook's inline dispatch).
+  | "retry_pending"
+  | "account_blocked"
+  | "delivery_uncertain"
+  | "dead_letter";
 
 export type PipelineResult = {
   conversionLogId: string;
@@ -29,9 +37,10 @@ export type PipelineResult = {
  * Runs one ConversionLog row through match -> private reply -> public
  * reply -> finalize, stopping at the first stage that doesn't succeed.
  * Idempotent by inheritance: every stage already guards on its own
- * required input status, so re-running this on an already-processed row
- * stops immediately at whichever stage's guard first rejects it — no
- * separate idempotency check is implemented here.
+ * required input status (via an atomic claim/conditional update — Phase A),
+ * so re-running this on an already-processed or already-claimed row stops
+ * immediately at whichever stage's guard first rejects it — no separate
+ * idempotency check is implemented here.
  */
 export async function runPipeline(conversionLogId: string): Promise<PipelineResult> {
   const matchResult = await matchConversionLog(conversionLogId);
@@ -43,13 +52,19 @@ export async function runPipeline(conversionLogId: string): Promise<PipelineResu
   }
 
   const privateReplyResult = await sendPrivateReply(conversionLogId);
+  if (privateReplyResult.outcome === "not_claimed") {
+    return { conversionLogId, outcome: "already_processed" };
+  }
   if (privateReplyResult.outcome !== "sent") {
-    return { conversionLogId, outcome: "private_reply_failed" };
+    return { conversionLogId, outcome: privateReplyResult.outcome };
   }
 
   const publicReplyResult = await sendPublicReply(conversionLogId);
+  if (publicReplyResult.outcome === "not_claimed") {
+    return { conversionLogId, outcome: "already_processed" };
+  }
   if (publicReplyResult.outcome !== "sent") {
-    return { conversionLogId, outcome: "public_reply_failed" };
+    return { conversionLogId, outcome: publicReplyResult.outcome };
   }
 
   await finalizeConversion(conversionLogId);

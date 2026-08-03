@@ -13,8 +13,13 @@
 // webhook signature verification (services/webhook-handler.ts) — hence
 // separate env vars rather than reusing META_APP_SECRET.
 
+import { classifyHttpFailure, classifyNetworkFailure } from "./meta-api-error";
+
 const OAUTH_API_BASE_URL = process.env.INSTAGRAM_OAUTH_API_BASE_URL || "https://api.instagram.com";
-const GRAPH_API_BASE_URL = process.env.META_GRAPH_API_BASE_URL || "https://graph.instagram.com";
+// Read lazily (per call) — see graph-client.ts's identical comment.
+function graphApiBaseUrl(): string {
+  return process.env.META_GRAPH_API_BASE_URL || "https://graph.instagram.com";
+}
 const GRAPH_API_VERSION = "v21.0";
 
 export class InstagramOAuthNotConfiguredError extends Error {
@@ -87,7 +92,7 @@ type LongLivedTokenResponse = {
 export async function exchangeForLongLivedToken(shortLivedToken: string): Promise<LongLivedTokenResponse> {
   const { appSecret } = requireConfig();
 
-  const url = new URL(`${GRAPH_API_BASE_URL}/access_token`);
+  const url = new URL(`${graphApiBaseUrl()}/access_token`);
   url.searchParams.set("grant_type", "ig_exchange_token");
   url.searchParams.set("client_secret", appSecret);
   url.searchParams.set("access_token", shortLivedToken);
@@ -102,16 +107,28 @@ export async function exchangeForLongLivedToken(shortLivedToken: string): Promis
   return response.json();
 }
 
+/**
+ * Refreshes a still-valid long-lived token for another ~60 days. Throws a
+ * MetaApiError (Phase A) rather than a plain Error — the token-refresh
+ * sweep (services/token-refresh-sweep.ts) needs the classification to
+ * decide between "confirmed invalid, mark the account TOKEN_EXPIRED" and
+ * "transient, leave ACTIVE and retry next sweep."
+ */
 export async function refreshLongLivedToken(currentToken: string): Promise<LongLivedTokenResponse> {
-  const url = new URL(`${GRAPH_API_BASE_URL}/refresh_access_token`);
+  const url = new URL(`${graphApiBaseUrl()}/refresh_access_token`);
   url.searchParams.set("grant_type", "ig_refresh_token");
   url.searchParams.set("access_token", currentToken);
 
-  const response = await fetch(url.toString());
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
+  } catch (err) {
+    throw classifyNetworkFailure(err);
+  }
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(`Instagram token refresh failed (${response.status}): ${detail}`);
+    throw classifyHttpFailure(response.status, detail);
   }
 
   return response.json();
@@ -123,7 +140,7 @@ type AccountInfoResponse = {
 };
 
 export async function fetchAccountInfo(accessToken: string): Promise<AccountInfoResponse> {
-  const url = new URL(`${GRAPH_API_BASE_URL}/${GRAPH_API_VERSION}/me`);
+  const url = new URL(`${graphApiBaseUrl()}/${GRAPH_API_VERSION}/me`);
   url.searchParams.set("fields", "user_id,username");
   url.searchParams.set("access_token", accessToken);
 
@@ -144,7 +161,7 @@ export async function fetchAccountInfo(accessToken: string): Promise<AccountInfo
  * comment events for it.
  */
 export async function subscribeToWebhooks(accessToken: string): Promise<void> {
-  const url = new URL(`${GRAPH_API_BASE_URL}/${GRAPH_API_VERSION}/me/subscribed_apps`);
+  const url = new URL(`${graphApiBaseUrl()}/${GRAPH_API_VERSION}/me/subscribed_apps`);
   url.searchParams.set("subscribed_fields", "comments");
   url.searchParams.set("access_token", accessToken);
 

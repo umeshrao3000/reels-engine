@@ -17,6 +17,12 @@ export type FinalizeResult = {
  * Marks a PUBLIC_REPLIED row SUCCESS. Idempotent: a row not currently
  * PUBLIC_REPLIED (not yet there, or already finalized by an earlier run)
  * is left untouched.
+ *
+ * Phase A (Automation Reliability): uses a conditional `updateMany`
+ * guarded on `status: "PUBLIC_REPLIED"` rather than a plain `update` — no
+ * external side effect here, so this is only about making the read-check-
+ * write itself race-free against a concurrent finalize of the same row,
+ * for the same one-consistent-final-status reason as trigger-matcher.ts.
  */
 export async function finalizeConversion(conversionLogId: string): Promise<FinalizeResult> {
   const log = await prisma.conversionLog.findUniqueOrThrow({ where: { id: conversionLogId } });
@@ -26,7 +32,34 @@ export async function finalizeConversion(conversionLogId: string): Promise<Final
     return { conversionLogId, outcome: "not_ready" };
   }
 
-  await prisma.conversionLog.update({ where: { id: log.id }, data: { status: "SUCCESS" } });
+  const claimed = await prisma.conversionLog.updateMany({
+    where: { id: log.id, status: "PUBLIC_REPLIED" },
+    data: { status: "SUCCESS" },
+  });
+  if (claimed.count === 0) {
+    logger.info("conversion.finalize.not_ready", { conversionLogId, status: "already finalized" });
+    return { conversionLogId, outcome: "not_ready" };
+  }
+
   logger.info("conversion.finalize.success", { conversionLogId });
   return { conversionLogId, outcome: "success" };
+}
+
+/**
+ * Batch entry point over every currently PUBLIC_REPLIED row, oldest first.
+ * Called by the cron route.
+ */
+export async function finalizePendingConversions(limit = 50): Promise<FinalizeResult[]> {
+  const pending = await prisma.conversionLog.findMany({
+    where: { status: "PUBLIC_REPLIED" },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+    select: { id: true },
+  });
+
+  const results: FinalizeResult[] = [];
+  for (const { id } of pending) {
+    results.push(await finalizeConversion(id));
+  }
+  return results;
 }

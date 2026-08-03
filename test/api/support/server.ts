@@ -11,7 +11,15 @@ import { join } from "node:path";
 // POST/PATCH/DELETE functions are imported and invoked directly — there is
 // no supported way to unit-test these routes without a running server.
 
-const PORT = Number(process.env.API_TEST_PORT ?? 3100);
+// Derived from this subprocess's PID, not a fixed constant: Node's test
+// runner runs multiple test *files* concurrently, each in its own
+// subprocess, and every file that imports this module starts its own
+// server — a shared hardcoded port would collide (EADDRINUSE) whenever
+// two such files happen to run at the same time. PID is unique per
+// concurrently-running subprocess, so this needs no cross-file
+// coordination. Override with API_TEST_PORT to pin a specific port (e.g.
+// for local debugging).
+const PORT = Number(process.env.API_TEST_PORT ?? 3100 + (process.pid % 500));
 export const API_TEST_BASE_URL = `http://127.0.0.1:${PORT}`;
 
 const NEXT_BIN = join(process.cwd(), "node_modules", "next", "dist", "bin", "next");
