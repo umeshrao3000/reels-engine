@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 // Phase A (Automation Reliability): a single-row lock so an overlapping
@@ -43,11 +44,23 @@ export async function acquireCronLock(
   // the lock. Creating it already-locked here would make a lock's very
   // first-ever acquisition attempt fail its own claim check right after
   // creating the row.
-  await prisma.cronLock.upsert({
-    where: { id: lockId },
-    create: { id: lockId, lockedAt: null, lockedUntil: null, ownerToken: null },
-    update: {},
-  });
+  //
+  // On the row's very first creation, multiple concurrent callers can race
+  // this upsert's insert branch; the loser gets a unique-constraint error
+  // rather than Prisma silently falling back to its update branch. That's
+  // fine — it only means another caller already created the (unlocked)
+  // row, which is exactly the state this call wants, so it's safe to swallow.
+  try {
+    await prisma.cronLock.upsert({
+      where: { id: lockId },
+      create: { id: lockId, lockedAt: null, lockedUntil: null, ownerToken: null },
+      update: {},
+    });
+  } catch (err) {
+    if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002")) {
+      throw err;
+    }
+  }
 
   const claimed = await prisma.cronLock.updateMany({
     where: { id: lockId, OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }] },

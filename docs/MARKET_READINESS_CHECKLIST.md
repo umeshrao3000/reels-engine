@@ -24,9 +24,9 @@ Every item maps to the MR milestone that closes it. `[ ]` = not started (accurat
 
 ## Authentication
 
-- [ ] 🔴 Real per-user authentication replaces the single shared admin passcode — *MR-4*
-- [ ] 🔴 A distinct internal super-admin role exists, separate from workspace-owner accounts — *MR-4*
-- [ ] 🟡 Session/token handling reviewed for the new auth system (expiry, revocation) — *MR-4*
+- [ ] 🔴 Real per-user authentication replaces the single shared admin passcode — *MR-4, superseded by MR-3.1 (Beta SaaS Build Program) for the customer-facing side*. **MR-3.1 evidence:** real customer sign-up/login/session-management now exists (`lib/auth/server.ts`, better-auth — email+password, scrypt-hashed, DB-backed sessions, real on-by-default rate limiting and CSRF origin-checking), verified via 8 API-route tests (`test/api/auth-routes.test.ts`) and a real-browser Playwright spec (`e2e/customer-auth.spec.ts`). Not checked — this *adds* a separate customer identity system, it does not touch or replace `ADMIN_PASSCODE` (the internal `/ops` admin surface is explicitly out of scope for this milestone, `docs/MARKET_READINESS_MASTER_PLAN.md`'s Beta SaaS Build Program addendum), and password reset is not yet end-to-end functional — see `docs/EMAIL_PROVIDER.md`.
+- [ ] 🔴 A distinct internal super-admin role exists, separate from workspace-owner accounts — *MR-4*. Unaffected by MR-3.1 — no workspace/organization concept exists yet (MR-3.2).
+- [ ] 🟡 Session/token handling reviewed for the new auth system (expiry, revocation) — *MR-4, MR-3.1*. **MR-3.1 evidence:** session tokens are DB-backed (`Session` table, better-auth default 7-day expiry, revoked on sign-out — verified in `test/api/auth-routes.test.ts`), not a hand-rolled scheme. Not checked — a full review (rotation policy, concurrent-session limits) is deferred pending real usage.
 - [ ] 🟢 Team seats / multiple users per workspace — *explicitly deferred, `docs/PRODUCT_BOUNDARY_DECISION.md §5`*
 
 ## Tenant isolation
