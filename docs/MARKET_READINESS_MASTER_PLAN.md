@@ -104,6 +104,8 @@ No milestone here has been started. This document is the plan, not a status repo
 
 ## MR-4: User, workspace, and tenant authorization
 
+> **Beta SaaS Build Program addendum:** Product Owner decision re-sequenced this milestone's scope into finer-grained sub-milestones (MR-3.1 Customer Authentication, MR-3.2 Single Organization Model, MR-3.3 Customer Dashboard, MR-3.4 Subscription System, MR-3.5 Onboarding, MR-3.6 Launch Polish — roughly covering what this section and MR-5/MR-7 describe below, at smaller-PR granularity, one milestone approved and merged at a time). MR-3.1 (customer sign-up/login/session management, `lib/auth/server.ts`) is complete; see `docs/MARKET_READINESS_CHECKLIST.md`'s Authentication section for evidence. The objective/scope below remains the accurate description of the full body of work — treat "MR-4" as the umbrella this addendum's sub-milestones incrementally deliver, not a stale/superseded plan.
+
 **Objective:** replace the single-shared-passcode, zero-tenancy model (`docs/MARKET_READINESS_BASELINE.md §3`) with real per-user authentication and workspace-scoped data isolation — the single largest structural gap standing between "internal tool" and "SaaS product," per `docs/PRODUCT_BOUNDARY_DECISION.md §3-4`.
 
 **Exact scope:**

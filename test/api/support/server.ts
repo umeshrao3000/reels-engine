@@ -43,7 +43,12 @@ export async function startApiTestServer(): Promise<void> {
   // kill() and exit-tracking below actually work.
   server = spawn(process.execPath, [NEXT_BIN, "start", "-p", String(PORT)], {
     cwd: process.cwd(),
-    env: process.env,
+    // BETTER_AUTH_URL must match this specific ephemeral port so
+    // better-auth's origin check (lib/auth/server.ts) trusts requests
+    // this test file itself sends — a static value from the outer CI/dev
+    // env can't know this port ahead of time, since it's derived from
+    // this subprocess's own PID (see PORT above).
+    env: { ...process.env, BETTER_AUTH_URL: API_TEST_BASE_URL },
     stdio: ["ignore", "pipe", "pipe"],
   });
 

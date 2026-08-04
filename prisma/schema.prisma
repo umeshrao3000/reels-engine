@@ -359,3 +359,82 @@ model CronLock {
 
   @@map("cron_locks")
 }
+
+// MR-3.1 (Beta SaaS Build Program): customer identity, entirely separate
+// from the admin/ops passcode gate (lib/modules/admin/session.ts), which
+// stays untouched — this is a new, additive identity system for people
+// paying for the Automation Engine, not a replacement for the internal
+// admin surface. Field/model shapes here are dictated by better-auth
+// (lib/auth/server.ts), not chosen freely — see
+// node_modules/@better-auth/core/dist/db/schema/*.mjs for the canonical
+// shape this mirrors. No relation yet to Campaign/SocialAccount/etc.;
+// that linkage is MR-3.2 (Single Organization Model), explicitly out of
+// scope for this milestone.
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions Session[]
+  accounts Account[]
+
+  @@unique([email])
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@map("sessions")
+}
+
+// One row per sign-in method a user has. For email+password (the only
+// method MR-3.1 enables), providerId is always "credential" and the
+// scrypt password hash lives in `password` — better-auth's own design,
+// not this table's password field being reused for anything else.
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("accounts")
+}
+
+// Short-lived tokens for password-reset (MR-3.1) and, later, email
+// verification — one generic table, per better-auth's own design.
+model Verification {
+  id         String    @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
+
+  @@map("verifications")
+}
