@@ -21,11 +21,17 @@ export function CampaignForm({
   campaignId,
   socialAccounts,
   initialValues,
+  apiBasePath = "/api/admin/campaigns",
+  successHref = "/ops/campaigns",
 }: {
   mode: "create" | "edit";
   campaignId?: string;
   socialAccounts: { id: string; label: string }[];
   initialValues?: CampaignFormValues;
+  /** MR-3.2: lets the customer dashboard reuse this component. Admin call
+   * sites are unaffected — they don't pass these props. */
+  apiBasePath?: string;
+  successHref?: string;
 }) {
   const router = useRouter();
   const [values, setValues] = useState<CampaignFormValues>(
@@ -54,7 +60,7 @@ export function CampaignForm({
       const body =
         mode === "create" ? { ...values, initialKeywords } : values;
       const res = await fetch(
-        mode === "create" ? "/api/admin/campaigns" : `/api/admin/campaigns/${campaignId}`,
+        mode === "create" ? apiBasePath : `${apiBasePath}/${campaignId}`,
         {
           method: mode === "create" ? "POST" : "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -66,7 +72,7 @@ export function CampaignForm({
         setError(data.error ?? "Save failed.");
         return;
       }
-      router.push("/ops/campaigns");
+      router.push(successHref);
       router.refresh();
     } catch {
       setError("Couldn't reach the server.");

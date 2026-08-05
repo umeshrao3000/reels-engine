@@ -49,6 +49,54 @@ describe("matchConversionLog", () => {
     assert.ok(lead, "expected a Lead to be created on match");
   });
 
+  it("MR-3.2: stamps the matched ConversionLog with the campaign's owning organization", async () => {
+    const org = await prisma.organization.create({
+      data: {
+        name: "Trigger Matcher Test Org",
+        owner: {
+          create: {
+            id: `test-user-${Date.now()}`,
+            name: "Trigger Matcher Test",
+            email: `trigger-matcher-org-${Date.now()}@example.com`,
+          },
+        },
+      },
+    });
+    const account = await createTestSocialAccount({ organizationId: org.id });
+    socialAccountIds.push(account.id);
+    const campaign = await createTestCampaign(account.id, { triggerKeywords: ["deal"] });
+    const log = await createTestConversionLog({
+      commentText: "any deal here?",
+      mediaId: campaign.instagramMediaId,
+    });
+    conversionLogIds.push(log.id);
+
+    const result = await matchConversionLog(log.id);
+    assert.equal(result.outcome, "matched");
+
+    const updated = await prisma.conversionLog.findUniqueOrThrow({ where: { id: log.id } });
+    assert.equal(updated.organizationId, org.id);
+
+    await prisma.user.delete({ where: { id: org.ownerUserId } }); // cascades the organization
+  });
+
+  it("MR-3.2: leaves organizationId null when matched to a legacy (unowned admin) campaign", async () => {
+    const account = await createTestSocialAccount(); // no organizationId — admin-connected
+    socialAccountIds.push(account.id);
+    const campaign = await createTestCampaign(account.id, { triggerKeywords: ["deal"] });
+    const log = await createTestConversionLog({
+      commentText: "any deal here?",
+      mediaId: campaign.instagramMediaId,
+    });
+    conversionLogIds.push(log.id);
+
+    const result = await matchConversionLog(log.id);
+    assert.equal(result.outcome, "matched");
+
+    const updated = await prisma.conversionLog.findUniqueOrThrow({ where: { id: log.id } });
+    assert.equal(updated.organizationId, null);
+  });
+
   it("does not match on a word-boundary near-miss ('dealer' must not match keyword 'deal')", async () => {
     const account = await createTestSocialAccount();
     socialAccountIds.push(account.id);

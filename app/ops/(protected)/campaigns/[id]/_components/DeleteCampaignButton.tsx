@@ -3,7 +3,17 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export function DeleteCampaignButton({ campaignId }: { campaignId: string }) {
+export function DeleteCampaignButton({
+  campaignId,
+  apiBasePath = "/api/admin/campaigns",
+  backHref = "/ops/campaigns",
+}: {
+  campaignId: string;
+  /** MR-3.2: lets the customer dashboard reuse this component. Admin call
+   * sites are unaffected — they don't pass these props. */
+  apiBasePath?: string;
+  backHref?: string;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,13 +27,13 @@ export function DeleteCampaignButton({ campaignId }: { campaignId: string }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/campaigns/${campaignId}`, { method: "DELETE" });
+      const res = await fetch(`${apiBasePath}/${campaignId}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setError(data.error ?? "Couldn't delete.");
         return;
       }
-      router.push("/ops/campaigns");
+      router.push(backHref);
       router.refresh();
     } catch {
       setError("Couldn't reach the server.");

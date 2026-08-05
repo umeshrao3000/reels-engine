@@ -4,6 +4,13 @@ import { test, expect } from "./support/fixtures";
 // log out → log back in, plus the forgot-password request path — the
 // entire scope of this milestone, exercised through a real browser against
 // the real app, real Postgres, and better-auth's real routes (no mocking).
+//
+// Customer Experience Sprint: a fixed, file-distinct X-Forwarded-For so
+// this file's real sign-up/sign-in/change-password calls (rate-limited
+// 3 req/10s by better-auth, on by default) never share an IP bucket with
+// the other e2e spec files' auth calls when the full suite runs back to
+// back — same technique test/api/auth-routes.test.ts already uses per-test.
+test.use({ extraHTTPHeaders: { "X-Forwarded-For": "10.10.1.1" } });
 
 function uniqueEmail(): string {
   return `e2e-customer-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
