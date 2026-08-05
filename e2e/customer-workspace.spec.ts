@@ -7,6 +7,10 @@ import { prisma } from "../lib/prisma";
 // the SocialAccount row directly — real Meta OAuth can't run in CI),
 // creates a campaign, manages its keywords, and — the actual point of
 // this milestone — a second, independent customer never sees any of it.
+//
+// Customer Experience Sprint: file-distinct X-Forwarded-For — see the
+// identical comment in customer-auth.spec.ts.
+test.use({ extraHTTPHeaders: { "X-Forwarded-For": "10.10.2.1" } });
 
 function uniqueEmail(label: string): string {
   return `e2e-${label}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;

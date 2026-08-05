@@ -70,7 +70,12 @@ export default async function CustomerInstagramPage({
       )}
 
       {accounts.length === 0 ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">No accounts connected yet.</p>
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-zinc-300 px-6 py-10 text-center dark:border-zinc-700">
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">No accounts connected yet.</p>
+          <p className="text-xs text-zinc-400 dark:text-zinc-500">
+            Connect Instagram to start capturing leads from comments.
+          </p>
+        </div>
       ) : (
         <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
           {accounts.map((account) => (
