@@ -3,6 +3,8 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
 import { prisma } from "@/lib/prisma";
 import { getEmailProvider } from "@/lib/modules/email";
+import { logger } from "@/lib/logger";
+import { getOrCreateOrganizationForUser } from "@/lib/modules/organizations/organization-service";
 
 // MR-3.1 (Beta SaaS Build Program): customer authentication, built on
 // better-auth rather than hand-rolled — Product-Owner-approved departure
@@ -31,6 +33,29 @@ export const auth = betterAuth({
     requireEmailVerification: false,
     async sendResetPassword({ user, url }) {
       await getEmailProvider().sendPasswordReset({ to: user.email, url });
+    },
+  },
+  // MR-3.2 (Single Organization Ownership): every customer gets exactly
+  // one Organization, created right after their User row is. Best-effort
+  // and non-blocking — a failure here must never fail sign-up itself
+  // (the user row already committed by the time this runs); if it does
+  // fail, lib/modules/organizations/session.ts's getCustomerContext()
+  // self-heals by creating the missing organization on the customer's
+  // first authenticated request instead.
+  databaseHooks: {
+    user: {
+      create: {
+        async after(user) {
+          try {
+            await getOrCreateOrganizationForUser(user.id, user.name);
+          } catch (err) {
+            logger.error("organization.auto_create_failed", {
+              userId: user.id,
+              error: err instanceof Error ? err.message : "Unknown error",
+            });
+          }
+        },
+      },
     },
   },
   plugins: [nextCookies()],

@@ -18,6 +18,10 @@ export async function createTestSocialAccount(overrides: Partial<{
   // not a plain string.
   pageAccessToken: string;
   tokenExpiresAt: Date | null;
+  // MR-3.2 (Single Organization Ownership): undefined (the default) means
+  // no organization — same as every fixture-created account before this
+  // milestone. Pass an id to simulate a customer-connected account.
+  organizationId: string;
 }> = {}) {
   const suffix = randomUUID();
   return prisma.socialAccount.create({
@@ -28,6 +32,7 @@ export async function createTestSocialAccount(overrides: Partial<{
       status: overrides.status ?? "ACTIVE",
       isConnected: overrides.isConnected ?? true,
       tokenExpiresAt: overrides.tokenExpiresAt,
+      organizationId: overrides.organizationId,
     },
   });
 }

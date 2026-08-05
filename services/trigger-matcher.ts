@@ -80,6 +80,11 @@ export async function matchConversionLog(conversionLogId: string): Promise<Match
     ? await prisma.campaign.findMany({
         where: { instagramMediaId: mediaId, isActive: true },
         orderBy: { createdAt: "asc" },
+        // MR-3.2: needed to stamp the matched ConversionLog with the
+        // owning organization (see the updateMany below) — legacy
+        // admin-owned campaigns have no organization, which is fine,
+        // organizationId is nullable.
+        include: { socialAccount: { select: { organizationId: true } } },
       })
     : [];
 
@@ -107,6 +112,9 @@ export async function matchConversionLog(conversionLogId: string): Promise<Match
       where: { id: log.id, status: "PENDING" },
       data: {
         campaignId: campaign.id,
+        // MR-3.2: denormalized at match time, same moment campaignId is
+        // set — see the field comment on ConversionLog.organizationId.
+        organizationId: campaign.socialAccount.organizationId,
         leadId: lead?.id,
         matchedKeyword,
         status: "MATCHED",

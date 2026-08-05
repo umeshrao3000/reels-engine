@@ -162,9 +162,19 @@ model SocialAccount {
 
   campaigns           Campaign[]
 
+  // MR-3.2 (Single Organization Ownership): nullable — existing/admin-
+  // connected accounts have no organization (they stay reachable only
+  // through /ops, unchanged). Set when a customer connects their own
+  // Instagram account through the new /dashboard flow. SetNull on delete:
+  // an organization being removed must not cascade-delete a live social
+  // account and its campaign history.
+  organization        Organization?       @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  organizationId       String?
+
   // Phase A (Automation Reliability): the token-refresh sweep scans for
   // ACTIVE accounts nearing tokenExpiresAt on every cron tick.
   @@index([status, tokenExpiresAt])
+  @@index([organizationId])
   @@map("social_accounts")
 }
 
@@ -325,6 +335,17 @@ model ConversionLog {
   privateReplyMessageId       String?
   publicReplyId                String?
 
+  // MR-3.2 (Single Organization Ownership): explicitly carries the
+  // organization context, rather than being derived by a join through
+  // Campaign -> SocialAccount at query time — ConversionLog is the
+  // business event this whole product exists to produce, and the intended
+  // audit/analytics boundary. Nullable and set at match time
+  // (services/trigger-matcher.ts), same moment campaignId is set; a row
+  // with no matched campaign (skipped_no_campaign, or matched to a legacy
+  // admin-owned campaign with no organization) has no organization either.
+  organization    Organization?  @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  organizationId  String?
+
   rawPayload      Json?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
@@ -336,6 +357,7 @@ model ConversionLog {
   @@index([status, claimExpiresAt])
   @@index([campaignId])
   @@index([status])
+  @@index([organizationId])
   @@map("conversion_logs")
 }
 
@@ -367,9 +389,7 @@ model CronLock {
 // admin surface. Field/model shapes here are dictated by better-auth
 // (lib/auth/server.ts), not chosen freely — see
 // node_modules/@better-auth/core/dist/db/schema/*.mjs for the canonical
-// shape this mirrors. No relation yet to Campaign/SocialAccount/etc.;
-// that linkage is MR-3.2 (Single Organization Model), explicitly out of
-// scope for this milestone.
+// shape this mirrors.
 model User {
   id            String    @id @default(cuid())
   name          String
@@ -379,8 +399,12 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  sessions Session[]
-  accounts Account[]
+  sessions     Session[]
+  accounts     Account[]
+  // MR-3.2 (Single Organization Ownership): exactly one organization per
+  // customer, auto-created on signup (lib/auth/server.ts's
+  // databaseHooks.user.create.after) — see Organization below.
+  organization Organization?
 
   @@unique([email])
   @@map("users")
@@ -437,4 +461,31 @@ model Verification {
   updatedAt  DateTime? @updatedAt
 
   @@map("verifications")
+}
+
+// MR-3.2 (Single Organization Ownership): the tenancy boundary for the
+// customer-facing Automation Engine, additive to every model it touches.
+// Exactly one Organization per User (ownerUserId is unique — no teams, no
+// multi-org, no invitations; explicitly out of scope), auto-created right
+// after sign-up. Everything an organization owns hangs off SocialAccount
+// (the real root of the pre-existing Campaign -> SocialAccount chain) and,
+// denormalized for audit/analytics, ConversionLog directly — see the
+// comments on those two fields for why. Campaign and Keyword are
+// deliberately NOT given their own organizationId: ownership is already
+// fully implied by Campaign.socialAccountId -> SocialAccount.organizationId
+// and Keyword.campaignId -> Campaign, so a second column there would be a
+// redundant value to keep in sync, not a new capability. Lead stays
+// untouched and un-owned by design — see lib/modules/organizations for why.
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  ownerUserId String   @unique
+  owner       User     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  socialAccounts SocialAccount[]
+  conversionLogs ConversionLog[]
+
+  @@map("organizations")
 }

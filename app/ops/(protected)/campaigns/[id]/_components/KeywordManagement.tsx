@@ -11,9 +11,14 @@ const FIELD_CLASS =
 export function KeywordManagement({
   campaignId,
   keywords,
+  apiBasePath = "/api/admin/campaigns",
 }: {
   campaignId: string;
   keywords: KeywordRow[];
+  /** MR-3.2: lets the customer dashboard reuse this component against
+   * /api/customer/campaigns instead of /api/admin/campaigns. Admin call
+   * sites are unaffected — they don't pass this prop. */
+  apiBasePath?: string;
 }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -54,7 +59,7 @@ export function KeywordManagement({
   async function handleBulkAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!bulkText.trim()) return;
-    const data = await callApi(`/api/admin/campaigns/${campaignId}/keywords`, {
+    const data = await callApi(`${apiBasePath}/${campaignId}/keywords`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ keywords: bulkText }),
@@ -72,7 +77,7 @@ export function KeywordManagement({
   }
 
   async function handleToggle(keyword: KeywordRow) {
-    await callApi(`/api/admin/campaigns/${campaignId}/keywords/${keyword.id}`, {
+    await callApi(`${apiBasePath}/${campaignId}/keywords/${keyword.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ isActive: !keyword.isActive }),
@@ -82,7 +87,7 @@ export function KeywordManagement({
   async function handleDelete(keyword: KeywordRow) {
     const confirmed = window.confirm(`Delete keyword "${keyword.value}"? This cannot be undone.`);
     if (!confirmed) return;
-    await callApi(`/api/admin/campaigns/${campaignId}/keywords/${keyword.id}`, { method: "DELETE" });
+    await callApi(`${apiBasePath}/${campaignId}/keywords/${keyword.id}`, { method: "DELETE" });
   }
 
   function startEdit(keyword: KeywordRow) {
@@ -97,7 +102,7 @@ export function KeywordManagement({
       setEditingId(null);
       return;
     }
-    const data = await callApi(`/api/admin/campaigns/${campaignId}/keywords/${keyword.id}`, {
+    const data = await callApi(`${apiBasePath}/${campaignId}/keywords/${keyword.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value: editValue }),
